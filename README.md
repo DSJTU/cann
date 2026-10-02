@@ -1,6 +1,6 @@
 # BatchMatmulMaxSum
 
-Ascend C 实现，支持 FP16/BF16 输入、四种存储布局和 FP32 输出。当前赛事评测通过 15/15。
+Ascend C 实现，支持 FP16/BF16 输入、四种存储布局和 FP32 输出。原基线与精度修复版本均通过赛事评测 15/15；验证范围和性能结果见 [验证记录](docs/validation.md)。
 
 - [算子契约](cann_problem.md)
 - [构建与验证](solution/README.md)

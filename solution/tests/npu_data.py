@@ -7,7 +7,7 @@ from pathlib import Path
 import struct
 
 import numpy as np
-from test_cpu import cases, make_inputs, quantize
+from test_cpu import cases, extended_cases, make_inputs, quantize
 
 
 def specs(suite):
@@ -18,6 +18,19 @@ def specs(suite):
         return
     if suite == 'correctness':
         yield from cases()
+        return
+    if suite == 'extended':
+        yield from extended_cases()
+        return
+    if suite == 'precision':
+        for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
+            yield (1, 1, 1, 8192), dtype, ta, tb, 1, 'k-cancellation'
+        return
+    if suite == 'benchmark':
+        shapes = [(1, 64, 257, 128), (1, 129, 257, 136), (1, 9, 17, 8192),
+                  (3, 21, 129, 392), (8, 33, 65, 128), (64, 3, 17, 32)]
+        for shape, dtype, ta, tb in itertools.product(shapes, (1, 2), (False, True), (False, True)):
+            yield shape, dtype, ta, tb, 0, 'random'
         return
     shapes = [(1, 512, 1024, 128), (1, 1024, 4096, 128), (1, 8192, 257, 40),
               (1, 129, 1024, 8192), (8, 129, 257, 136), (64, 17, 33, 64)]
@@ -87,7 +100,7 @@ def verify(prefix, output):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', choices=('smoke', 'correctness', 'stress'), default='smoke')
+    parser.add_argument('--suite', choices=('smoke', 'correctness', 'extended', 'precision', 'benchmark', 'stress'), default='smoke')
     parser.add_argument('--prefix', required=True)
     parser.add_argument('--verify', help='verify device output instead of generating inputs')
     args = parser.parse_args()

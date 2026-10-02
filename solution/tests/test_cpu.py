@@ -7,6 +7,7 @@ selection, reduction order, output bounds, and dispatch.
 NumPy and g++ are needed for the numerical model. The current implementation
 also runs a Clang host address-space check before executing numerical cases.
 """
+import argparse
 import itertools
 import os
 from pathlib import Path
@@ -82,6 +83,23 @@ def cases():
         yield (1, 513, 129, 32), dtype, ta, tb, 24, 'parallel-cancellation'
 
 
+def extended_cases():
+    """Long-dot precision and the actual 20-core partition boundaries."""
+    for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
+        for cores in (1, 20):
+            for mode in ('k-cancellation', 'mixed-magnitude', 'close-max'):
+                yield (1, 9, 17, 8192), dtype, ta, tb, cores, mode
+        for shape, cores in (
+            ((3, 21, 129, 392), 7),
+            ((3, 21, 129, 392), 19),
+            ((3, 21, 129, 392), 20),
+            ((7, 9, 257, 456), 20),
+            ((1, 2, 4097, 128), 20),
+            ((21, 2, 17, 32), 20),
+        ):
+            yield shape, dtype, ta, tb, cores, 'random'
+
+
 def make_inputs(shape, mode, rng):
     batch, m, n, k = shape
     a = rng.uniform(-1, 1, (batch, m, k))
@@ -109,10 +127,27 @@ def make_inputs(shape, mode, rng):
         a[0, :-1, 0] = np.tile([1, -1], (shape[1] - 1) // 2)
         a[0, -1, 0] = 2 ** -10
         b[0, 0, :] = 1
+    elif mode in ('k-cancellation', 'mixed-magnitude'):
+        a.fill(1)
+        b.fill(0)
+        quarter = k // 4
+        large = 1 if mode == 'k-cancellation' else 4096
+        small = 2 ** -20 if mode == 'k-cancellation' else 2 ** -10
+        b[:, :quarter, :] = large
+        b[:, quarter:2 * quarter, :] = small
+        b[:, 2 * quarter:3 * quarter, :] = -large
+    elif mode == 'close-max':
+        a.fill(1)
+        b.fill(0)
+        b[:, 0, :] = 1
+        b[:, 1, :] = np.arange(n) * 2 ** -12
     return a, b
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--suite', choices=('all', 'correctness', 'extended'), default='all')
+    args = parser.parse_args()
     source_path = ROOT / 'kernel.asc'
     check_host_types()
     with tempfile.TemporaryDirectory(prefix='bmmms-cpu-') as temp:
@@ -127,7 +162,9 @@ def main():
             '-I', str(ROOT / 'tests'), '-I', str(temp),
             str(ROOT / 'tests/sim_runner.cpp'), '-o', str(executable),
         ], check=True)
-        specs = list(cases())
+        specs = list(cases()) if args.suite != 'extended' else []
+        if args.suite != 'correctness':
+            specs.extend(extended_cases())
         payload = bytearray(struct.pack('<I', len(specs)))
         expected = []
         rng = np.random.default_rng(20261002)

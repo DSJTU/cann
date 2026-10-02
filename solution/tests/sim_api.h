@@ -264,6 +264,10 @@ inline void Add(LocalTensor<float> dst, LocalTensor<float> a, LocalTensor<float>
     dst.Aligned(); a.Aligned(); b.Aligned();
     for (uint32_t i = 0; i < n; ++i) dst.SetValue(i, a.GetValue(i) + b.GetValue(i));
 }
+inline void Sub(LocalTensor<float> dst, LocalTensor<float> a, LocalTensor<float> b, uint32_t n) {
+    dst.Aligned(); a.Aligned(); b.Aligned();
+    for (uint32_t i = 0; i < n; ++i) dst.SetValue(i, a.GetValue(i) - b.GetValue(i));
+}
 template <typename T> void Gather(LocalTensor<T> dst, LocalTensor<T> src,
                                  LocalTensor<uint32_t> offsets, uint32_t base, uint32_t n) {
     dst.Aligned(); src.Aligned(); offsets.Aligned();
