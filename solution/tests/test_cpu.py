@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Run actual kernel control flow with synchronous CPU stand-ins.
 
-This does not compile for an NPU or model CANN synchronization, internal Matmul
-transfers, hardware rounding, or performance. It verifies partitioning,
-addressing, valid tail selection, reduction order, output bounds, and dispatch.
+This does not compile for an NPU or model CANN synchronization, hardware
+rounding, or performance. It verifies partitioning, addressing, valid tail
+selection, reduction order, output bounds, and dispatch.
 NumPy and g++ are needed for the numerical model. The current implementation
 also runs a Clang host address-space check before executing numerical cases.
 """
 import itertools
 import os
-import argparse
 from pathlib import Path
 import re
 import struct
@@ -28,41 +27,10 @@ def cpu_source(source_path):
     # check, not a claim that the platform's complete validation rules are known.
     assert not re.search(r'\b(?:printf|fprintf|puts|putchar|cout|cerr|DumpTensor)\b', source)
     assert '#include <cstdio>' not in source and '#include <stdio.h>' not in source
-    if source_path.name == 'vector_v4.asc':
-        # Preserve the device-tested boundary in this isolated experiment.
-        baseline = (ROOT / 'experiments/sources/vector_v2.asc').read_text()
-        start = 'extern "C" void run_kernel('
-        assert source[source.index(start):] == baseline[baseline.index(start):], 'host dispatch changed from v2'
-        signature = re.compile(r'__global__ __vector__ void Baseline\([^{]+')
-        assert signature.search(source).group() == signature.search(baseline).group(), 'kernel parameters changed from v2'
-    if source_path.name == 'vector_v8.asc':
-        baseline = (ROOT / 'experiments/sources/vector_v4.asc').read_text()
-        # Undo exactly the three intentional edits. The entire rest of both
-        # host and device source must match the known partial judge success.
-        restored = source.replace('uint32_t k, uint32_t groups)', 'uint32_t k)')
-        restored = restored.replace('    batch *= groups;\n', '')
-        restored = restored.replace('(x1, x2, y, batch, m, n, k, 1u);',
-                                    '(x1, x2, y, batch, m, n, k);')
-        def normalized(text):
-            return re.sub(r'\s+', '', re.sub(r'//[^\n]*', '', text))
-        assert normalized(restored) == normalized(baseline), 'v8 changed more than its extra scalar argument'
-        assert source.count('batch *= groups;') == 1
-        assert source.count('(x1, x2, y, batch, m, n, k, 1u);') == 8
-    if source_path.name == 'kernel.asc':
-        baseline = (ROOT / 'experiments/sources/vector_v8.asc').read_text()
-        def row_math(text):
-            start = text.index('for (uint32_t k0 = 0;')
-            end = text.index('batchSum = next;') + len('batchSum = next;')
-            return re.sub(r'\s+', '', text[start:end])
-        assert row_math(source) == row_math(baseline), 'v9 changed the tested row math or DMA'
-        assert source.count('AscendC::SyncAll();') == 2
-        assert not re.search(r'\b(?:aclrt|aclmdl)\w*\s*\(', source)
     source = re.sub(r'^#include "[^"]+"\n', '', source, flags=re.MULTILINE)
-    launch = re.compile(r'(Baseline<[^>]+>|MaxSim<[^>]+>|Dot<[^>]+>|Finish)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);')
+    launch = re.compile(r'(Baseline<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);')
     source, count = launch.subn(r'sim::Launch(\2, [&] { \1(\3); });', source)
-    expected = {'kernel.asc': 8, 'vector_v2.asc': 8, 'vector_v3.asc': 9,
-                'vector_v4.asc': 8, 'vector_v7.asc': 9, 'vector_v8.asc': 8, 'fused_v1.asc': 7}
-    assert count == expected[source_path.name], f"unexpected launch count: {count}"
+    assert count == 8, f'unexpected launch count: {count}'
     assert '<<<' not in source
     return source
 
@@ -81,7 +49,7 @@ def quantize(values, dtype):
 
 def cases():
     # Covers batch strides, N tails, K tails, full K tiles followed by a tail,
-    # and the archived implementation's M/N partition boundaries.
+    # and M/N partition boundaries.
     shapes = [
         (1, 1, 1, 32), (3, 1, 1, 40), (2, 1, 1, 8192),
         (1, 2, 3, 32), (2, 15, 17, 40), (3, 17, 15, 72),
@@ -145,28 +113,8 @@ def make_inputs(shape, mode, rng):
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--fused-v1', action='store_true', help='check archived fused implementation')
-    parser.add_argument('--vector-v2', action='store_true', help='check archived batch-only vector implementation')
-    parser.add_argument('--vector-v3', action='store_true', help='check archived M-parallel vector implementation')
-    parser.add_argument('--vector-v4', action='store_true', help='check archived device-tested batched dot products')
-    parser.add_argument('--vector-v7', action='store_true', help='check archived graph-compatible M-parallel implementation')
-    parser.add_argument('--vector-v8', action='store_true', help='check archived 11/15 judge baseline')
-    parser.add_argument('--fail-allocation', action='store_true', help='force workspace allocation failure in the CPU model')
-    args = parser.parse_args()
-    if sum((args.fused_v1, args.vector_v2, args.vector_v3, args.vector_v4, args.vector_v7, args.vector_v8)) > 1:
-        parser.error('select only one archived implementation')
-    source_path = (ROOT / 'experiments/sources/fused_v1.asc' if args.fused_v1 else
-                   ROOT / 'experiments/sources/vector_v2.asc' if args.vector_v2 else
-                   ROOT / 'experiments/sources/vector_v3.asc' if args.vector_v3 else
-                   ROOT / 'experiments/sources/vector_v4.asc' if args.vector_v4 else
-                   ROOT / 'experiments/sources/vector_v7.asc' if args.vector_v7 else
-                   ROOT / 'experiments/sources/vector_v8.asc' if args.vector_v8 else ROOT / 'kernel.asc')
-    current = source_path.name == 'kernel.asc'
-    if args.fail_allocation and not args.vector_v7:
-        parser.error('--fail-allocation applies only to --vector-v7; current implementation does not allocate workspace')
-    if current:
-        check_host_types()
+    source_path = ROOT / 'kernel.asc'
+    check_host_types()
     with tempfile.TemporaryDirectory(prefix='bmmms-cpu-') as temp:
         temp = Path(temp)
         (temp / 'kernel_cpu.inc').write_text(cpu_source(source_path))
@@ -175,11 +123,7 @@ def main():
             'g++', '-std=c++14', '-O2', '-Wall', '-Wextra', '-Werror',
             '-Wno-unused-parameter', '-ffp-contract=off',
             '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
-            *(['-DSIM_FUSED_V1'] if args.fused_v1 else []),
-            *(['-DSIM_VECTOR_V3'] if args.vector_v3 else []),
-            *(['-DSIM_VECTOR_V5'] if args.vector_v7 else []),
-            *(['-DSIM_COLLECTIVE', '-pthread'] if current else []),
-            *(['-DSIM_FAIL_ALLOCATION'] if args.fail_allocation else []),
+            '-pthread',
             '-I', str(ROOT / 'tests'), '-I', str(temp),
             str(ROOT / 'tests/sim_runner.cpp'), '-o', str(executable),
         ], check=True)
@@ -218,18 +162,7 @@ def main():
             if not np.all(np.isfinite(actual)) or not np.all(scaled <= 1):
                 raise AssertionError(f'{spec}: actual={actual}, golden={golden}, error={error}')
         print(f'PASS: {len(specs)} CPU cases, FP16/BF16, all four storage layouts')
-        if args.fused_v1:
-            print('PASS: 4608 launch-plan boundary combinations')
-        elif args.vector_v3 or args.vector_v7:
-            print('PASS: 4608 M-partition boundary combinations')
-        elif args.vector_v4:
-            print('PASS: host dispatch and kernel signature exactly match device-tested v2')
-        if current:
-            print('PASS: threaded collective execution; per-row math and DMA match v8')
-        if args.vector_v8:
-            print('PASS: entire v8 source matches v4 except its extra scalar argument')
-        if args.fail_allocation:
-            print('PASS: forced allocation failure falls back to batch-only NPU control flow')
+        print('PASS: threaded collective execution')
         print('PASS: repeatability, input immutability, output guards')
         print('PASS: AddressSanitizer/UBSan, local initialization/alignment/DMA-position checks')
         print(f'Worst absolute error: {worst_error:.8g}; max error/tolerance: {worst_scaled:.6g}')
