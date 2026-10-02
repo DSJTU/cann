@@ -100,6 +100,15 @@ def extended_cases():
             yield shape, dtype, ta, tb, cores, 'random'
 
 
+def performance_cases():
+    """Tile-size and A-row block boundaries with independent numerical goldens."""
+    shapes = [(1, 15, 31, 128), (1, 16, 32, 128), (1, 17, 63, 40),
+              (1, 31, 64, 120), (1, 33, 65, 128), (3, 65, 129, 128),
+              (1, 64, 257, 128), (1, 129, 257, 128)]
+    for i, (shape, dtype, ta, tb) in enumerate(itertools.product(shapes, (1, 2), (False, True), (False, True))):
+        yield shape, dtype, ta, tb, (1, 20)[(i // 2) % 2], 'random'
+
+
 def make_inputs(shape, mode, rng):
     batch, m, n, k = shape
     a = rng.uniform(-1, 1, (batch, m, k))
@@ -146,7 +155,7 @@ def make_inputs(shape, mode, rng):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', choices=('all', 'correctness', 'extended'), default='all')
+    parser.add_argument('--suite', choices=('all', 'correctness', 'extended', 'performance'), default='all')
     args = parser.parse_args()
     source_path = ROOT / 'kernel.asc'
     check_host_types()
@@ -162,9 +171,11 @@ def main():
             '-I', str(ROOT / 'tests'), '-I', str(temp),
             str(ROOT / 'tests/sim_runner.cpp'), '-o', str(executable),
         ], check=True)
-        specs = list(cases()) if args.suite != 'extended' else []
-        if args.suite != 'correctness':
+        specs = list(cases()) if args.suite in ('all', 'correctness') else []
+        if args.suite in ('all', 'extended'):
             specs.extend(extended_cases())
+        if args.suite in ('all', 'performance'):
+            specs.extend(performance_cases())
         payload = bytearray(struct.pack('<I', len(specs)))
         expected = []
         rng = np.random.default_rng(20261002)

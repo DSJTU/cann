@@ -104,6 +104,7 @@ namespace AscendC {
 enum class TPosition { GM, VECIN, VECOUT, VECCALC };
 enum class HardEvent { V_S, S_V, MTE2_V, MTE2_S, S_MTE2, S_MTE3, V_MTE3 };
 enum class RoundMode { CAST_NONE };
+enum class ReduceOrder { ORDER_ONLY_VALUE };
 inline uint32_t GetBlockIdx() { return sim::block(); }
 inline uint32_t GetBlockNum() { return sim::blocks(); }
 template <bool isAIVOnly = true> inline void SyncAll() {
@@ -201,6 +202,8 @@ template <typename T> void DataCopyPad(LocalTensor<T> dst, GlobalTensor<T> src,
     const uint32_t count = p.blockLen / sizeof(T);
     const uint32_t left = pad.isPad ? pad.left : 0;
     const uint32_t right = pad.isPad ? pad.right : 0;
+    if (left * sizeof(T) > 32 || right * sizeof(T) > 32)
+        throw std::runtime_error("DataCopyPad padding exceeds 32-byte limit");
     const uint32_t dstPitch = ((left + count + right) * sizeof(T) + 31) / 32 * 32 / sizeof(T) +
                              p.dstStride * 32 / sizeof(T);
     const uint32_t srcPitch = (p.blockLen + p.srcStride) / sizeof(T);
@@ -275,6 +278,22 @@ template <typename T> void Gather(LocalTensor<T> dst, LocalTensor<T> src,
         const uint32_t byte = base + offsets.GetValue(i);
         if (byte % sizeof(T)) throw std::runtime_error("unaligned Gather byte offset");
         dst.SetValue(i, src.GetValue(byte / sizeof(T)));
+    }
+}
+}
+
+namespace AscendC {
+inline void WholeReduceMax(LocalTensor<float> dst, LocalTensor<float> src, int32_t mask,
+                           int32_t repeats, int32_t dstStride, int32_t blockStride, int32_t srcStride,
+                           ReduceOrder order) {
+    dst.Aligned(); src.Aligned();
+    if (mask < 1 || mask > 64 || repeats < 1 || repeats > 255 || order != ReduceOrder::ORDER_ONLY_VALUE)
+        throw std::runtime_error("invalid FP32 WholeReduceMax parameters");
+    for (int32_t r = 0; r < repeats; ++r) {
+        float value = src.GetValue(r * srcStride * 8);
+        for (int32_t i = 1; i < mask; ++i)
+            value = std::max(value, src.GetValue(r * srcStride * 8 + i / 8 * blockStride * 8 + i % 8));
+        dst.SetValue(r * dstStride, value);
     }
 }
 }

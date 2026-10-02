@@ -34,6 +34,8 @@ CPU 模型若把 `__gm__` 擦掉，会漏掉地址空间错误。用 [Host 类�
 
 单个 FP32 标量输出可用 DataCopyPad 精确搬运 4 字节。接口重载与产品支持不同，参数单位应对照 [DataCopyPad 官方表](https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0265.html) 和已安装 SDK。
 
+`DataCopyPadExtParams` 的 left/right 虽按元素计，单侧填充对应的字节数各不超过 32。扩大 N 分块后不能直接将短尾块填到整个逻辑分块宽度；例如 32 列分块只剩 1 列 FP16，填 31 个元素会超限。按实际列数对齐到 16 元素得到合法物理 pitch，并让 Cast 与 Gather 使用同一 pitch。CPU 模型已加入该上限检查；这项遗漏曾造成目标 NPU 返回 507035。
+
 ## 核内与核间同步
 
 源码顺序不代表 Scalar、Vector、MTE2、MTE3 已完成。按生产者→消费者选 HardEvent，通过 TPipe 获取事件 ID，配对 SetFlag/WaitFlag；基线中的常见关系：
