@@ -1,3 +1,8 @@
-/build/
+/build*/
+/lab-data/
+/lab-profile*/
+/runs/
+/input/
+/output/
 __pycache__/
 *.pyc

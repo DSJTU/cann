@@ -30,13 +30,13 @@ def cpu_source(source_path):
     assert '#include <cstdio>' not in source and '#include <stdio.h>' not in source
     if source_path.name == 'vector_v4.asc':
         # Preserve the device-tested boundary in this isolated experiment.
-        baseline = (ROOT / 'experiments/vector_v2.asc').read_text()
+        baseline = (ROOT / 'experiments/sources/vector_v2.asc').read_text()
         start = 'extern "C" void run_kernel('
         assert source[source.index(start):] == baseline[baseline.index(start):], 'host dispatch changed from v2'
         signature = re.compile(r'__global__ __vector__ void Baseline\([^{]+')
         assert signature.search(source).group() == signature.search(baseline).group(), 'kernel parameters changed from v2'
     if source_path.name == 'vector_v8.asc':
-        baseline = (ROOT / 'experiments/vector_v4.asc').read_text()
+        baseline = (ROOT / 'experiments/sources/vector_v4.asc').read_text()
         # Undo exactly the three intentional edits. The entire rest of both
         # host and device source must match the known partial judge success.
         restored = source.replace('uint32_t k, uint32_t groups)', 'uint32_t k)')
@@ -49,7 +49,7 @@ def cpu_source(source_path):
         assert source.count('batch *= groups;') == 1
         assert source.count('(x1, x2, y, batch, m, n, k, 1u);') == 8
     if source_path.name == 'kernel.asc':
-        baseline = (ROOT / 'experiments/vector_v8.asc').read_text()
+        baseline = (ROOT / 'experiments/sources/vector_v8.asc').read_text()
         def row_math(text):
             start = text.index('for (uint32_t k0 = 0;')
             end = text.index('batchSum = next;') + len('batchSum = next;')
@@ -156,12 +156,12 @@ def main():
     args = parser.parse_args()
     if sum((args.fused_v1, args.vector_v2, args.vector_v3, args.vector_v4, args.vector_v7, args.vector_v8)) > 1:
         parser.error('select only one archived implementation')
-    source_path = (ROOT / 'experiments/fused_v1.asc' if args.fused_v1 else
-                   ROOT / 'experiments/vector_v2.asc' if args.vector_v2 else
-                   ROOT / 'experiments/vector_v3.asc' if args.vector_v3 else
-                   ROOT / 'experiments/vector_v4.asc' if args.vector_v4 else
-                   ROOT / 'experiments/vector_v7.asc' if args.vector_v7 else
-                   ROOT / 'experiments/vector_v8.asc' if args.vector_v8 else ROOT / 'kernel.asc')
+    source_path = (ROOT / 'experiments/sources/fused_v1.asc' if args.fused_v1 else
+                   ROOT / 'experiments/sources/vector_v2.asc' if args.vector_v2 else
+                   ROOT / 'experiments/sources/vector_v3.asc' if args.vector_v3 else
+                   ROOT / 'experiments/sources/vector_v4.asc' if args.vector_v4 else
+                   ROOT / 'experiments/sources/vector_v7.asc' if args.vector_v7 else
+                   ROOT / 'experiments/sources/vector_v8.asc' if args.vector_v8 else ROOT / 'kernel.asc')
     current = source_path.name == 'kernel.asc'
     if args.fail_allocation and not args.vector_v7:
         parser.error('--fail-allocation applies only to --vector-v7; current implementation does not allocate workspace')

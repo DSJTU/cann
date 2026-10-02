@@ -72,7 +72,7 @@ def check(path):
 
 
 def main():
-    old = check(ROOT / 'experiments/vector_v5.asc')
+    old = check(ROOT / 'experiments/sources/vector_v5.asc')
     assert old.returncode != 0, 'the known v5 address-space error was not reproduced'
     assert 'reinterpret_cast' in old.stderr and 'is not allowed' in old.stderr, old.stderr
     print('PASS: archived v5 reproduces the illegal ordinary-pointer to GM_ADDR cast')
