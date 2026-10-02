@@ -1,6 +1,6 @@
 # BatchMatmulMaxSum
 
-正确性基线已通过赛事 15/15，见 [验证记录](../docs/validation.md)。当前性能优化内核的真机验证与计时见 [性能记录](../docs/performance.md)，尚未取得该版本的赛事结果。提交复制 [kernel.asc](kernel.asc) 全部内容，保留模板 run_kernel ABI；数值计算全部在 NPU。
+正确性基线已通过赛事 15/15，见 [验证记录](../docs/validation.md)；性能优化内核也已通过赛事 15/15，截图及逐项耗时见 [性能记录](../docs/performance.md)。当前内核的真机验证与性能数据也记录于该页。提交复制 [kernel.asc](kernel.asc) 全部内容，保留模板 run_kernel ABI；数值计算全部在 NPU。
 
 小任务按 batch 分核，大任务沿 M 分区；保持最大行分区长度不增加，减少不必要的同步参与核。各核完成 FP32 点积及跨 K 块补偿累加、N 最大值、分区补偿求和，再通过硬件屏障与输出位置按固定顺序汇总。一次 kernel 启动，无额外 GM 工作内存或原子累加。
 

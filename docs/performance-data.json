@@ -6213,5 +6213,93 @@
       "output guards",
       "local initialization/alignment/DMA-position checks"
     ]
+  },
+  "competition_results": {
+    "screenshot_reference": "e8ec315",
+    "source": "user-provided screenshot",
+    "kernel_sha256": "bb89ad3cba93c280286be5c32b6f9a1fd2b0aa665d46d22ba2db983e38cb669e",
+    "result": {
+      "passed": 15,
+      "total": 15,
+      "error_percentage": 0.0
+    },
+    "timing_unit": "us",
+    "timings_in_displayed_order": [
+      {
+        "item_order": 1,
+        "displayed": "8.76µs",
+        "elapsed_us": 8.76
+      },
+      {
+        "item_order": 2,
+        "displayed": "19.57µs",
+        "elapsed_us": 19.57
+      },
+      {
+        "item_order": 3,
+        "displayed": "11.98µs",
+        "elapsed_us": 11.98
+      },
+      {
+        "item_order": 4,
+        "displayed": "36.86µs",
+        "elapsed_us": 36.86
+      },
+      {
+        "item_order": 5,
+        "displayed": "35.41µs",
+        "elapsed_us": 35.41
+      },
+      {
+        "item_order": 6,
+        "displayed": "91.51µs",
+        "elapsed_us": 91.51
+      },
+      {
+        "item_order": 7,
+        "displayed": "578.94µs",
+        "elapsed_us": 578.94
+      },
+      {
+        "item_order": 8,
+        "displayed": "12.5ms",
+        "elapsed_us": 12500.0
+      },
+      {
+        "item_order": 9,
+        "displayed": "31.5ms",
+        "elapsed_us": 31500.0
+      },
+      {
+        "item_order": 10,
+        "displayed": "127ms",
+        "elapsed_us": 127000.0
+      },
+      {
+        "item_order": 11,
+        "displayed": "50.1ms",
+        "elapsed_us": 50100.0
+      },
+      {
+        "item_order": 12,
+        "displayed": "168ms",
+        "elapsed_us": 168000.0
+      },
+      {
+        "item_order": 13,
+        "displayed": "624.32µs",
+        "elapsed_us": 624.32
+      },
+      {
+        "item_order": 14,
+        "displayed": "605.78µs",
+        "elapsed_us": 605.78
+      },
+      {
+        "item_order": 15,
+        "displayed": "651.81µs",
+        "elapsed_us": 651.81
+      }
+    ]
   }
 }
