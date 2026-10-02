@@ -8,10 +8,16 @@
 #include <memory>
 #include <stdexcept>
 #include <vector>
+#include <condition_variable>
+#include <chrono>
+#include <exception>
+#include <mutex>
+#include <thread>
 #define __aicore__
 #define __global__
 #define __vector__
 #define __mix__(a, b)
+#define __schedmode__(mode)
 #define __gm__
 #define __kfc_workspace__
 using half = _Float16;
@@ -52,14 +58,65 @@ struct TensorGroupInfo { const TensorInfo* tensors; int64_t numTensors; };
 enum Pipe { PIPE_ALL, PIPE_V };
 enum class CubeFormat { ND };
 namespace sim {
-inline uint32_t& block() { static uint32_t v = 0; return v; }
+inline uint32_t& block() { static thread_local uint32_t v = 0; return v; }
 inline uint32_t& blocks() { static uint32_t v = 1; return v; }
 inline std::vector<void*>& allocations() { static std::vector<void*> v; return v; }
 inline uint32_t& allocCount() { static uint32_t v = 0; return v; }
 inline uint32_t& syncCount() { static uint32_t v = 0; return v; }
+class Collective {
+    std::mutex mutex;
+    std::condition_variable changed;
+    uint32_t participants, arrived = 0, generation = 0;
+    bool aborted = false;
+public:
+    explicit Collective(uint32_t n) : participants(n) {}
+    void Abort() {
+        std::lock_guard<std::mutex> lock(mutex);
+        aborted = true;
+        changed.notify_all();
+    }
+    void Wait() {
+        std::unique_lock<std::mutex> lock(mutex);
+        if (aborted) throw std::runtime_error("collective aborted");
+        const auto phase = generation;
+        if (++arrived == participants) {
+            arrived = 0;
+            ++generation;
+            changed.notify_all();
+        } else if (!changed.wait_for(lock, std::chrono::seconds(20), [&] {
+            return generation != phase || aborted;
+        })) {
+            aborted = true;
+            changed.notify_all();
+            throw std::runtime_error("collective barrier timeout");
+        }
+        if (aborted) throw std::runtime_error("collective aborted");
+    }
+};
+inline Collective*& activeCollective() { static Collective* p = nullptr; return p; }
 template <typename F> void Launch(uint32_t n, F f) {
     blocks() = n;
+#ifdef SIM_COLLECTIVE
+    Collective collective(n);
+    activeCollective() = &collective;
+    std::exception_ptr failure;
+    std::mutex failureMutex;
+    std::vector<std::thread> workers;
+    for (uint32_t i = 0; i < n; ++i) workers.emplace_back([&, i] {
+        block() = i;
+        try { f(); }
+        catch (...) {
+            { std::lock_guard<std::mutex> lock(failureMutex);
+              if (!failure) failure = std::current_exception(); }
+            collective.Abort();
+        }
+    });
+    for (auto& worker : workers) worker.join();
+    activeCollective() = nullptr;
+    if (failure) std::rethrow_exception(failure);
+#else
     for (block() = 0; block() < n; ++block()) f();
+#endif
 }
 struct Storage {
     std::vector<uint8_t> bytes, initialized;
@@ -100,10 +157,15 @@ struct TCubeTiling {
 };
 }
 enum class TPosition { GM, VECIN, VECOUT, VECCALC };
-enum class HardEvent { V_S, S_V, MTE2_V, MTE2_S, S_MTE3, V_MTE3 };
+enum class HardEvent { V_S, S_V, MTE2_V, MTE2_S, S_MTE2, S_MTE3, V_MTE3 };
 enum class RoundMode { CAST_NONE };
 inline uint32_t GetBlockIdx() { return sim::block(); }
 inline uint32_t GetBlockNum() { return sim::blocks(); }
+template <bool isAIVOnly = true> inline void SyncAll() {
+    static_assert(isAIVOnly, "only pure Vector collectives are modeled");
+    if (!sim::activeCollective()) throw std::runtime_error("no collective launch");
+    sim::activeCollective()->Wait();
+}
 template <Pipe> inline void PipeBarrier() {}
 template <HardEvent> inline void SetFlag(int) {}
 template <HardEvent> inline void WaitFlag(int) {}

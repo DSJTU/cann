@@ -45,7 +45,7 @@ def host_source(path):
     begin = source.index('namespace bmmms {')
     end = source.index('__aicore__ inline uint32_t Min')
     helpers = source[begin:end]
-    signatures = re.findall(r'__global__ __vector__ void (Baseline|Finish)\(([^{}]+)\)\s*\{', source)
+    signatures = re.findall(r'__global__ (?:__vector__|__mix__\(0, 1\)) void (Baseline|Finish)\(([^{}]+)\)\s*\{', source)
     names = [name for name, _ in signatures]
     assert names in (['Baseline'], ['Baseline', 'Finish'])
     declarations = []

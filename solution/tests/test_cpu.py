@@ -35,7 +35,7 @@ def cpu_source(source_path):
         assert source[source.index(start):] == baseline[baseline.index(start):], 'host dispatch changed from v2'
         signature = re.compile(r'__global__ __vector__ void Baseline\([^{]+')
         assert signature.search(source).group() == signature.search(baseline).group(), 'kernel parameters changed from v2'
-    if source_path.name == 'kernel.asc':
+    if source_path.name == 'vector_v8.asc':
         baseline = (ROOT / 'experiments/vector_v4.asc').read_text()
         # Undo exactly the three intentional edits. The entire rest of both
         # host and device source must match the known partial judge success.
@@ -48,11 +48,20 @@ def cpu_source(source_path):
         assert normalized(restored) == normalized(baseline), 'v8 changed more than its extra scalar argument'
         assert source.count('batch *= groups;') == 1
         assert source.count('(x1, x2, y, batch, m, n, k, 1u);') == 8
+    if source_path.name == 'kernel.asc':
+        baseline = (ROOT / 'experiments/vector_v8.asc').read_text()
+        def row_math(text):
+            start = text.index('for (uint32_t k0 = 0;')
+            end = text.index('batchSum = next;') + len('batchSum = next;')
+            return re.sub(r'\s+', '', text[start:end])
+        assert row_math(source) == row_math(baseline), 'v9 changed the tested row math or DMA'
+        assert source.count('AscendC::SyncAll();') == 2
+        assert not re.search(r'\b(?:aclrt|aclmdl)\w*\s*\(', source)
     source = re.sub(r'^#include "[^"]+"\n', '', source, flags=re.MULTILINE)
     launch = re.compile(r'(Baseline<[^>]+>|MaxSim<[^>]+>|Dot<[^>]+>|Finish)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);')
     source, count = launch.subn(r'sim::Launch(\2, [&] { \1(\3); });', source)
     expected = {'kernel.asc': 8, 'vector_v2.asc': 8, 'vector_v3.asc': 9,
-                'vector_v4.asc': 8, 'vector_v7.asc': 9, 'fused_v1.asc': 7}
+                'vector_v4.asc': 8, 'vector_v7.asc': 9, 'vector_v8.asc': 8, 'fused_v1.asc': 7}
     assert count == expected[source_path.name], f"unexpected launch count: {count}"
     assert '<<<' not in source
     return source
@@ -96,6 +105,13 @@ def cases():
         yield (2, 33, 19, 40), dtype, ta, tb, 24, 'zero'
         yield (1, 17, 1, 32), dtype, ta, tb, 1, 'cancellation'
         yield (1, 17, 1, 32), dtype, ta, tb, 24, 'cancellation'
+    # Exceed the real production parallelism threshold, including multiple
+    # adjacent batch outputs and M ranges not divisible by the group count.
+    for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
+        yield (3, 129, 257, 40), dtype, ta, tb, 24, 'negative'
+        yield (3, 129, 257, 40), dtype, ta, tb, 24, 'zero'
+        yield (1, 129, 257, 32), dtype, ta, tb, 24, 'partition'
+        yield (1, 513, 129, 32), dtype, ta, tb, 24, 'parallel-cancellation'
 
 
 def make_inputs(shape, mode, rng):
@@ -119,6 +135,12 @@ def make_inputs(shape, mode, rng):
         b.fill(0)
         a[0, :, 0] = np.array([1, -1] * 8 + [2 ** -10])
         b[0, 0, 0] = 1
+    elif mode == 'parallel-cancellation':
+        a.fill(0)
+        b.fill(0)
+        a[0, :-1, 0] = np.tile([1, -1], (shape[1] - 1) // 2)
+        a[0, -1, 0] = 2 ** -10
+        b[0, 0, :] = 1
     return a, b
 
 
@@ -129,18 +151,20 @@ def main():
     parser.add_argument('--vector-v3', action='store_true', help='check archived M-parallel vector implementation')
     parser.add_argument('--vector-v4', action='store_true', help='check archived device-tested batched dot products')
     parser.add_argument('--vector-v7', action='store_true', help='check archived graph-compatible M-parallel implementation')
+    parser.add_argument('--vector-v8', action='store_true', help='check archived 11/15 judge baseline')
     parser.add_argument('--fail-allocation', action='store_true', help='force workspace allocation failure in the CPU model')
     args = parser.parse_args()
-    if sum((args.fused_v1, args.vector_v2, args.vector_v3, args.vector_v4, args.vector_v7)) > 1:
+    if sum((args.fused_v1, args.vector_v2, args.vector_v3, args.vector_v4, args.vector_v7, args.vector_v8)) > 1:
         parser.error('select only one archived implementation')
     source_path = (ROOT / 'experiments/fused_v1.asc' if args.fused_v1 else
                    ROOT / 'experiments/vector_v2.asc' if args.vector_v2 else
                    ROOT / 'experiments/vector_v3.asc' if args.vector_v3 else
                    ROOT / 'experiments/vector_v4.asc' if args.vector_v4 else
-                   ROOT / 'experiments/vector_v7.asc' if args.vector_v7 else ROOT / 'kernel.asc')
+                   ROOT / 'experiments/vector_v7.asc' if args.vector_v7 else
+                   ROOT / 'experiments/vector_v8.asc' if args.vector_v8 else ROOT / 'kernel.asc')
     current = source_path.name == 'kernel.asc'
     if args.fail_allocation and not args.vector_v7:
-        parser.error('--fail-allocation applies only to --vector-v7; current v8 does not allocate workspace')
+        parser.error('--fail-allocation applies only to --vector-v7; current implementation does not allocate workspace')
     if current:
         check_host_types()
     with tempfile.TemporaryDirectory(prefix='bmmms-cpu-') as temp:
@@ -154,6 +178,7 @@ def main():
             *(['-DSIM_FUSED_V1'] if args.fused_v1 else []),
             *(['-DSIM_VECTOR_V3'] if args.vector_v3 else []),
             *(['-DSIM_VECTOR_V5'] if args.vector_v7 else []),
+            *(['-DSIM_COLLECTIVE', '-pthread'] if current else []),
             *(['-DSIM_FAIL_ALLOCATION'] if args.fail_allocation else []),
             '-I', str(ROOT / 'tests'), '-I', str(temp),
             str(ROOT / 'tests/sim_runner.cpp'), '-o', str(executable),
@@ -200,7 +225,9 @@ def main():
         elif args.vector_v4:
             print('PASS: host dispatch and kernel signature exactly match device-tested v2')
         if current:
-            print('PASS: entire source matches v4 except the extra scalar argument, use, and eight launch arguments')
+            print('PASS: threaded collective execution; per-row math and DMA match v8')
+        if args.vector_v8:
+            print('PASS: entire v8 source matches v4 except its extra scalar argument')
         if args.fail_allocation:
             print('PASS: forced allocation failure falls back to batch-only NPU control flow')
         print('PASS: repeatability, input immutability, output guards')
