@@ -285,6 +285,26 @@ template <typename T> void Gather(LocalTensor<T> dst, LocalTensor<T> src,
         dst.SetValue(i, src.GetValue(byte / sizeof(T)));
     }
 }
+template <typename T> void CreateVecIndex(LocalTensor<T> dst, T first, uint32_t n) {
+    dst.Aligned();
+    if (!n || n * sizeof(T) % 32) throw std::runtime_error("nonaligned CreateVecIndex length");
+    for (uint32_t i = 0; i < n; ++i) dst.SetValue(i, T(first + T(i)));
+}
+template <typename T> void Muls(LocalTensor<T> dst, LocalTensor<T> src, T scalar, uint32_t n) {
+    dst.Aligned(); src.Aligned();
+    if (!n || n * sizeof(T) % 32) throw std::runtime_error("nonaligned Muls length");
+    for (uint32_t i = 0; i < n; ++i) dst.SetValue(i, T(src.GetValue(i) * scalar));
+}
+template <typename T> void Adds(LocalTensor<T> dst, LocalTensor<T> src, T scalar, uint32_t n) {
+    dst.Aligned(); src.Aligned();
+    if (!n || n * sizeof(T) % 32) throw std::runtime_error("nonaligned Adds length");
+    for (uint32_t i = 0; i < n; ++i) dst.SetValue(i, T(src.GetValue(i) + scalar));
+}
+template <typename T> void Max(LocalTensor<T> dst, LocalTensor<T> a, LocalTensor<T> b, uint32_t n) {
+    dst.Aligned(); a.Aligned(); b.Aligned();
+    if (!n || n * sizeof(T) % 32) throw std::runtime_error("nonaligned Max length");
+    for (uint32_t i = 0; i < n; ++i) dst.SetValue(i, std::max(a.GetValue(i), b.GetValue(i)));
+}
 }
 
 namespace AscendC {

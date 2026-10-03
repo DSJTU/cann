@@ -106,6 +106,15 @@ def extended_cases():
             ((21, 2, 17, 32), 20),
         ):
             yield shape, dtype, ta, tb, cores, 'random'
+    # Multi-row long K. (1, 9, 17, 8192) has one row per core at 20 cores, so it
+    # never shares a B tile. These shapes do, including a full N tile plus a tail.
+    for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
+        for cores in (1, 20):
+            for mode in ('k-cancellation', 'mixed-magnitude', 'close-max'):
+                yield (1, 32, 64, 8192), dtype, ta, tb, cores, mode
+            yield (1, 32, 65, 256), dtype, ta, tb, cores, 'negative'
+            yield (1, 32, 64, 256), dtype, ta, tb, cores, 'random'
+        yield (2, 40, 80, 256), dtype, ta, tb, 20, 'random'
 
 
 def performance_cases():
@@ -119,6 +128,14 @@ def performance_cases():
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (1, 257, 513, 128), dtype, ta, tb, 20, 'random'
         yield (1, 1649, 257, 40), dtype, ta, tb, 20, 'negative'
+    # Short-K A cache holds at most 128 rows. 129 rows must reload A per N tile.
+    # N=65 crosses both the 32-column and 64-column tile widths.
+    for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
+        yield (1, 128, 65, 128), dtype, ta, tb, 1, 'random'
+        yield (1, 129, 65, 128), dtype, ta, tb, 1, 'random'
+        yield (1, 20, 33, 40), dtype, ta, tb, 1, 'negative'
+        yield (1, 32, 33, 128), dtype, ta, tb, 20, 'negative'
+        yield (1, 64, 257, 128), dtype, ta, tb, 20, 'close-max'
 
 
 def make_inputs(shape, mode, rng):
