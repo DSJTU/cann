@@ -128,10 +128,10 @@ def performance_cases():
         yield (1, 256, 2048, 32), dtype, ta, tb, 20, 'random'
         yield (1, 256, 1031, 64), dtype, ta, tb, 1, 'negative'
     # Short-K A cache holds at most 128 rows. 129 rows must reload A per N tile.
-    # N=65 crosses both the 32-column and 64-column tile widths.
+    # N=65 crosses both tile widths; K=64 stays below the new Cube work gate.
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
-        yield (1, 128, 65, 128), dtype, ta, tb, 1, 'random'
-        yield (1, 129, 65, 128), dtype, ta, tb, 1, 'random'
+        yield (1, 128, 65, 64), dtype, ta, tb, 1, 'random'
+        yield (1, 129, 65, 64), dtype, ta, tb, 1, 'random'
         yield (1, 20, 33, 40), dtype, ta, tb, 1, 'negative'
         yield (1, 32, 33, 128), dtype, ta, tb, 20, 'negative'
         yield (1, 64, 257, 128), dtype, ta, tb, 20, 'close-max'
@@ -144,6 +144,27 @@ def cube_finish_cases():
         yield (1, 8191, 257, 40), dtype, ta, tb, 20, 'm-magnitude'
         # One core reuses Finish's UB across batches, with different row values.
         yield (3, 8192, 257, 40), dtype, ta, tb, 1, 'm-cancellation'
+
+
+def short_cube_cases():
+    """Short Cube coverage, N partitions, request windows and dispatch edges."""
+    definitions = [
+        ((1, 32, 256, 128), 'random'),   # Exactly 2^20; now Cube.
+        ((1, 32, 255, 128), 'negative'), # Just below the work gate; Vector.
+        ((1, 16, 512, 128), 'negative'), # Half of one base-M tile is valid.
+        ((1, 15, 1025, 128), 'random'),  # M gate keeps this on Vector.
+        ((1, 513, 63, 40), 'negative'),  # N gate keeps this on Vector.
+        ((1, 32, 4097, 32), 'random'),   # One worker spans several 1024 windows.
+        ((1, 33, 2049, 40), 'negative'), # Both M/N tails, uneven N partitions.
+        ((1, 64, 513, 128), 'close-max'),
+        ((8, 16, 65, 128), 'random'),    # Aggregate batch work crosses the gate.
+        ((3, 65, 257, 40), 'random'),    # Uneven batch/M task count.
+        ((1, 32, 1025, 32), 'partition'), # Different rows win in different N groups.
+        ((3, 129, 257, 40), 'm-cancellation'),
+    ]
+    for (shape, mode), dtype, ta, tb, cores in itertools.product(
+            definitions, (1, 2), (False, True), (False, True), (1, 20)):
+        yield shape, dtype, ta, tb, cores, mode
 
 
 def long_cube_cases():
@@ -230,7 +251,7 @@ def make_inputs(shape, mode, rng):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', choices=('all', 'correctness', 'extended', 'performance', 'cube-finish', 'long-cube'), default='all')
+    parser.add_argument('--suite', choices=('all', 'correctness', 'extended', 'performance', 'cube-finish', 'short-cube', 'long-cube'), default='all')
     args = parser.parse_args()
     source_path = ROOT / 'kernel.asc'
     check_host_types()
@@ -253,6 +274,8 @@ def main():
             specs.extend(performance_cases())
         if args.suite == 'cube-finish':
             specs.extend(cube_finish_cases())
+        if args.suite in ('all', 'short-cube'):
+            specs.extend(short_cube_cases())
         if args.suite in ('all', 'long-cube'):
             specs.extend(long_cube_cases())
         payload = bytearray(struct.pack('<I', len(specs)))

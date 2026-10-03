@@ -7,7 +7,7 @@ from pathlib import Path
 import struct
 
 import numpy as np
-from test_cpu import cases, extended_cases, performance_cases, cube_finish_cases, long_cube_cases, make_inputs, quantize
+from test_cpu import cases, extended_cases, performance_cases, cube_finish_cases, short_cube_cases, long_cube_cases, make_inputs, quantize
 
 
 def specs(suite):
@@ -39,6 +39,9 @@ def specs(suite):
         return
     if suite == 'cube-finish':
         yield from cube_finish_cases()
+        return
+    if suite == 'short-cube':
+        yield from short_cube_cases()
         return
     if suite == 'long-cube':
         yield from long_cube_cases()
@@ -123,7 +126,7 @@ def verify(prefix, output):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', choices=('smoke', 'correctness', 'extended', 'performance', 'cube-finish', 'long-cube', 'launch-rule', 'precision', 'benchmark', 'large-short-k', 'stress'), default='smoke')
+    parser.add_argument('--suite', choices=('smoke', 'correctness', 'extended', 'performance', 'cube-finish', 'short-cube', 'long-cube', 'launch-rule', 'precision', 'benchmark', 'large-short-k', 'stress'), default='smoke')
     parser.add_argument('--prefix', required=True)
     parser.add_argument('--verify', help='verify device output instead of generating inputs')
     args = parser.parse_args()

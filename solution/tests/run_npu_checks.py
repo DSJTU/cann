@@ -81,7 +81,7 @@ def main():
         save()
 
     try:
-        for suite in ('correctness','extended','performance','long-cube'):
+        for suite in ('correctness','extended','performance','short-cube','long-cube'):
             prefix = data/suite
             run('generate-'+suite,['python3',root/'tests/npu_data.py','--suite',suite,'--prefix',prefix])
             for mode in (None,'--capture-cold','--capture-chain','--capture-streams'):

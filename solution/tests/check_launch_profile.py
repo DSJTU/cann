@@ -24,7 +24,7 @@ def host_buffers(shape):
     """Match run_kernel. Short Cube allocates workspace and row maxima.
     Long Cube also allocates the packed-panel scratch."""
     batch, m, n, k = shape
-    if k <= 128 and m >= 256 and n >= 256 and m * n * k >= 1 << 24:
+    if k <= 128 and m >= 16 and n >= 64 and batch * m * n * k >= 1 << 20:
         return 2
     if k > 128 and m >= 16 and n >= 64 and batch * m * n * k >= 1 << 22:
         return 3
