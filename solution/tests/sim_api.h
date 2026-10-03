@@ -40,6 +40,7 @@ struct TensorInfo { const int64_t* shape; int64_t numDims; int32_t dtype; };
 struct TensorGroupInfo { const TensorInfo* tensors; int64_t numTensors; };
 enum Pipe { PIPE_ALL, PIPE_V };
 namespace sim {
+inline uint32_t& logicalBlocks() { static thread_local uint32_t v = 0; return v; }
 inline uint32_t& block() { static thread_local uint32_t v = 0; return v; }
 inline uint32_t& blocks() { static uint32_t v = 1; return v; }
 class Collective {
@@ -82,6 +83,7 @@ template <typename F> void Launch(uint32_t n, F f) {
     std::vector<std::thread> workers;
     for (uint32_t i = 0; i < n; ++i) workers.emplace_back([&, i] {
         block() = i;
+        logicalBlocks() = 0;
         try { f(); }
         catch (...) {
             { std::lock_guard<std::mutex> lock(failureMutex);
@@ -93,6 +95,9 @@ template <typename F> void Launch(uint32_t n, F f) {
     activeCollective() = nullptr;
     if (failure) std::rethrow_exception(failure);
 
+}
+template <typename F> void LaunchMixed(uint32_t n, F f) {
+    Launch(n * 2, [&] { logicalBlocks() = n; f(); });
 }
 struct Storage {
     std::vector<uint8_t> bytes, initialized;
@@ -106,7 +111,7 @@ enum class HardEvent { V_S, S_V, MTE2_V, MTE2_S, S_MTE2, S_MTE3, V_MTE3 };
 enum class RoundMode { CAST_NONE };
 enum class ReduceOrder { ORDER_ONLY_VALUE };
 inline uint32_t GetBlockIdx() { return sim::block(); }
-inline uint32_t GetBlockNum() { return sim::blocks(); }
+inline uint32_t GetBlockNum() { return sim::logicalBlocks() ? sim::logicalBlocks() : sim::blocks(); }
 template <bool isAIVOnly = true> inline void SyncAll() {
     static_assert(isAIVOnly, "only pure Vector collectives are modeled");
     if (!sim::activeCollective()) throw std::runtime_error("no collective launch");

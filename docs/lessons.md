@@ -21,6 +21,8 @@ CPU 模型若把 `__gm__` 擦掉，会漏掉地址空间错误。用 [Host 类�
 
 ## UB、DMA 与向量参数
 
+Matmul 的输入类型 `MatmulType<POSITION, FORMAT, TYPE, ISTRANS>` 默认不支持转置。需要给 `SetTensorA/B` 传 true 时，先把对应类型的 `ISTRANS` 设为 true；仅设置 Host tiling 的转置参数不足以开启设备侧能力。开启后可在运行时传 true 或 false。小用例通过不能替代这一接口约束，仍需检查转置时的 L1 容量与重复分块调用。参见 [Matmul 模板参数](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta1/API/ascendcopapi/atlasascendc_api_07_0623.html)。
+
 | 项目 | 检查重点 |
 | --- | --- |
 | TPipe/TBuf | 缓冲字节总量，随最大 K 增长的空间，正确的 VECIN/VECOUT/VECCALC 位置 |
@@ -51,7 +53,11 @@ CPU 模型若把 `__gm__` 擦掉，会漏掉地址空间错误。用 [Host 类�
 
 先证明依赖再删屏障。CPU 中同步执行的算子模型无法发现所有真实异步流水问题。
 
+Matmul 的 `GetTensorC<true>` 并不替代消费者到 Scalar 的完成依赖。当前分块实现会在复用 C 的 UB 或 `End()` 前等待 V_S，让归约与最大值合并真正完成。缺失这项依赖曾使 M=8192 的重复调用改变 78 个行最大值；补上后相同数据的重复、大型回归与图捕获全部通过。
+
 硬件 SyncAll 要求所有参与核执行相同数量的屏障，逻辑核数不能超过可同时驻留的物理核数。带屏障的任务不应分时过量调度或放进不同核迭代次数不一致的循环。纯 Vector 硬同步使用 `__mix__(0,1)`；可能存在多 stream 并发时，batch 调度 `__schedmode__(1)` 有助于避免核间等待造成的死锁。参见 [SyncAll](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/910/API/ascendcopapi/docs/en/api/SIMD-API/basic_api/sync_control/inter_core_sync/SyncAll.md)、[调度修饰符](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/900/programug/Ascendcopdevg/atlas_ascendc_10_10053.html)。较新文档不能替代目标版本验证。
+
+混合核 `__mix__(1,2)` 中，`GetBlockNum()` 返回 launch 配置的逻辑 block 数；AIV 的 `GetBlockIdx()` 范围却包含每个 block 的两个 Vector worker。任务循环步长应为 `2*GetBlockNum()`（或按当前核的 task ratio 计算），纯 Vector 核仍用原步长。已核对 CANN 9.0 的通用 `GetBlockNum()` 和 dav_c220 的 `GetBlockIdxImpl()` 实现。忽略配比会让不同 AIV 重复写同一行区间；小规模数值通过不能证明任务划分互不重叠。
 
 小 batch 只按 batch 分核可能闲置大部分计算核。沿 M 分配独立行时，证明分区完整、无交叠、无空段，且最终归约顺序明确。少量标量输出可作为轮流传递分区和的 GM 位置，配合全核屏障与固定顺序归约；这适用于当前算子，不是通用并行归约方案。
 

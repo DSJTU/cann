@@ -1,0 +1,1615 @@
+{
+  "target": {
+    "soc": "Ascend910_9362",
+    "sdk": "CANN 9.0",
+    "architecture": "dav-2201"
+  },
+  "cpu": {
+    "cases": 456,
+    "passed": 456,
+    "worst_absolute_error": 0.000244140625,
+    "worst_error_over_tolerance": 0.00373936,
+    "scope": "CPU control-flow model; FP64 Matmul dots; not hardware/capture/performance"
+  },
+  "main": {
+    "kernel_sha256": "32b012d2817efebaee75b5d649147fa9a77ce6740737deca8fa3da805e9e8b87",
+    "runner_sha256": "5698e3557995db4c10464f8a034b79b9e79b75e4fea037a990da657dec6f62d6",
+    "large_input_sha256": "55d9cca489f2f6ae9b1a59c3ed94a7c826a43a04fbe6573e7798d17bb1cac8ca",
+    "workflow_passed": true,
+    "reports": {
+      "correctness-ordinary": {
+        "cases": 280,
+        "passed": 280,
+        "worst_error_over_tolerance": 0.003739360584297527,
+        "failures": []
+      },
+      "correctness-capture-cold": {
+        "cases": 280,
+        "passed": 280,
+        "worst_error_over_tolerance": 0.003739360584297527,
+        "failures": []
+      },
+      "correctness-capture-chain": {
+        "cases": 280,
+        "passed": 280,
+        "worst_error_over_tolerance": 0.003739360584297527,
+        "failures": []
+      },
+      "correctness-capture-streams": {
+        "cases": 280,
+        "passed": 280,
+        "worst_error_over_tolerance": 0.003739360584297527,
+        "failures": []
+      },
+      "correctness-cold-shared": {
+        "cases": 280,
+        "passed": 280,
+        "worst_error_over_tolerance": 0.003739360584297527,
+        "failures": []
+      },
+      "extended-ordinary": {
+        "cases": 96,
+        "passed": 96,
+        "worst_error_over_tolerance": 0.0010401907876335045,
+        "failures": []
+      },
+      "extended-capture-cold": {
+        "cases": 96,
+        "passed": 96,
+        "worst_error_over_tolerance": 0.0010401907876335045,
+        "failures": []
+      },
+      "extended-capture-chain": {
+        "cases": 96,
+        "passed": 96,
+        "worst_error_over_tolerance": 0.0010401907876335045,
+        "failures": []
+      },
+      "extended-capture-streams": {
+        "cases": 96,
+        "passed": 96,
+        "worst_error_over_tolerance": 0.0010401907876335045,
+        "failures": []
+      },
+      "extended-cold-shared": {
+        "cases": 96,
+        "passed": 96,
+        "worst_error_over_tolerance": 0.0010401907876335045,
+        "failures": []
+      },
+      "performance-ordinary": {
+        "cases": 80,
+        "passed": 80,
+        "worst_error_over_tolerance": 0.0010126724821746856,
+        "failures": []
+      },
+      "performance-capture-cold": {
+        "cases": 80,
+        "passed": 80,
+        "worst_error_over_tolerance": 0.0010126724821746856,
+        "failures": []
+      },
+      "performance-capture-chain": {
+        "cases": 80,
+        "passed": 80,
+        "worst_error_over_tolerance": 0.0010126724821746856,
+        "failures": []
+      },
+      "performance-capture-streams": {
+        "cases": 80,
+        "passed": 80,
+        "worst_error_over_tolerance": 0.0010126724821746856,
+        "failures": []
+      },
+      "performance-cold-shared": {
+        "cases": 80,
+        "passed": 80,
+        "worst_error_over_tolerance": 0.0010126724821746856,
+        "failures": []
+      },
+      "large-ordinary": {
+        "cases": 24,
+        "passed": 24,
+        "worst_error_over_tolerance": 0.0,
+        "failures": []
+      },
+      "large-capture-cold": {
+        "cases": 24,
+        "passed": 24,
+        "worst_error_over_tolerance": 0.0,
+        "failures": []
+      },
+      "large-capture-chain": {
+        "cases": 24,
+        "passed": 24,
+        "worst_error_over_tolerance": 0.0,
+        "failures": []
+      },
+      "large-capture-streams": {
+        "cases": 24,
+        "passed": 24,
+        "worst_error_over_tolerance": 0.0,
+        "failures": []
+      },
+      "large-cold-shared": {
+        "cases": 24,
+        "passed": 24,
+        "worst_error_over_tolerance": 0.0,
+        "failures": []
+      },
+      "large-benchmark": {
+        "cases": 24,
+        "passed": 24,
+        "worst_error_over_tolerance": 0.0,
+        "failures": []
+      }
+    },
+    "resources": {
+      "correctness-ordinary": {
+        "cube_cases": 0,
+        "allocations": 0,
+        "frees": 0,
+        "registrations": 0,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "correctness-capture-cold": {
+        "cube_cases": 0,
+        "allocations": 0,
+        "frees": 0,
+        "registrations": 0,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "correctness-capture-chain": {
+        "cube_cases": 0,
+        "allocations": 0,
+        "frees": 0,
+        "registrations": 0,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "correctness-capture-streams": {
+        "cube_cases": 0,
+        "allocations": 0,
+        "frees": 0,
+        "registrations": 0,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "extended-ordinary": {
+        "cube_cases": 0,
+        "allocations": 0,
+        "frees": 0,
+        "registrations": 0,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "extended-capture-cold": {
+        "cube_cases": 0,
+        "allocations": 0,
+        "frees": 0,
+        "registrations": 0,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "extended-capture-chain": {
+        "cube_cases": 0,
+        "allocations": 0,
+        "frees": 0,
+        "registrations": 0,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "extended-capture-streams": {
+        "cube_cases": 0,
+        "allocations": 0,
+        "frees": 0,
+        "registrations": 0,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "performance-ordinary": {
+        "cube_cases": 16,
+        "allocations": 64,
+        "frees": 64,
+        "registrations": 0,
+        "ordinary_synchronizations": 32,
+        "error": 0
+      },
+      "performance-capture-cold": {
+        "cube_cases": 16,
+        "allocations": 32,
+        "frees": 32,
+        "registrations": 16,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "performance-capture-chain": {
+        "cube_cases": 16,
+        "allocations": 128,
+        "frees": 128,
+        "registrations": 16,
+        "ordinary_synchronizations": 16,
+        "error": 0
+      },
+      "performance-capture-streams": {
+        "cube_cases": 16,
+        "allocations": 64,
+        "frees": 64,
+        "registrations": 32,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "large-ordinary": {
+        "cube_cases": 24,
+        "allocations": 96,
+        "frees": 96,
+        "registrations": 0,
+        "ordinary_synchronizations": 48,
+        "error": 0
+      },
+      "large-capture-cold": {
+        "cube_cases": 24,
+        "allocations": 48,
+        "frees": 48,
+        "registrations": 24,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "large-capture-chain": {
+        "cube_cases": 24,
+        "allocations": 192,
+        "frees": 192,
+        "registrations": 24,
+        "ordinary_synchronizations": 24,
+        "error": 0
+      },
+      "large-capture-streams": {
+        "cube_cases": 24,
+        "allocations": 96,
+        "frees": 96,
+        "registrations": 48,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "large-benchmark": {
+        "cube_cases": 24,
+        "allocations": 576,
+        "frees": 576,
+        "registrations": 0,
+        "ordinary_synchronizations": 288,
+        "error": 0
+      }
+    }
+  },
+  "prototype": {
+    "kernel_sha256": "26db80dc1981ec3fc0332e6bc875168c52d665fcc751937ca72581839f78a8af",
+    "workflow_passed": true,
+    "reports": {
+      "tiles-capture-cold": {
+        "cases": 72,
+        "passed": 72,
+        "worst_error_over_tolerance": 0.0011268338234497047,
+        "failures": []
+      },
+      "tiles-capture-chain": {
+        "cases": 72,
+        "passed": 72,
+        "worst_error_over_tolerance": 0.0011268338234497047,
+        "failures": []
+      },
+      "tiles-capture-streams": {
+        "cases": 72,
+        "passed": 72,
+        "worst_error_over_tolerance": 0.0011268338234497047,
+        "failures": []
+      },
+      "tiles-capture-cold-shared": {
+        "cases": 72,
+        "passed": 72,
+        "worst_error_over_tolerance": 0.0011268338234497047,
+        "failures": []
+      },
+      "precision-capture-cold": {
+        "cases": 48,
+        "passed": 48,
+        "worst_error_over_tolerance": 0.0,
+        "failures": []
+      },
+      "precision-capture-chain": {
+        "cases": 48,
+        "passed": 48,
+        "worst_error_over_tolerance": 0.0,
+        "failures": []
+      },
+      "precision-capture-streams": {
+        "cases": 48,
+        "passed": 48,
+        "worst_error_over_tolerance": 0.0,
+        "failures": []
+      },
+      "precision-capture-cold-shared": {
+        "cases": 48,
+        "passed": 48,
+        "worst_error_over_tolerance": 0.0,
+        "failures": []
+      },
+      "short-validation-capture-cold": {
+        "cases": 248,
+        "passed": 248,
+        "worst_error_over_tolerance": 0.02710267013000832,
+        "failures": []
+      },
+      "short-validation-capture-chain": {
+        "cases": 248,
+        "passed": 248,
+        "worst_error_over_tolerance": 0.02710267013000832,
+        "failures": []
+      },
+      "short-validation-capture-streams": {
+        "cases": 248,
+        "passed": 248,
+        "worst_error_over_tolerance": 0.02710267013000832,
+        "failures": []
+      },
+      "short-validation-capture-cold-shared": {
+        "cases": 248,
+        "passed": 248,
+        "worst_error_over_tolerance": 0.02710267013000832,
+        "failures": []
+      },
+      "large-capture-cold": {
+        "cases": 24,
+        "passed": 24,
+        "worst_error_over_tolerance": 0.0,
+        "failures": []
+      },
+      "large-capture-chain": {
+        "cases": 24,
+        "passed": 24,
+        "worst_error_over_tolerance": 0.0,
+        "failures": []
+      },
+      "large-capture-streams": {
+        "cases": 24,
+        "passed": 24,
+        "worst_error_over_tolerance": 0.0,
+        "failures": []
+      },
+      "large-capture-cold-shared": {
+        "cases": 24,
+        "passed": 24,
+        "worst_error_over_tolerance": 0.0,
+        "failures": []
+      }
+    },
+    "resources": {
+      "tiles-capture-cold": {
+        "allocations": 144,
+        "frees": 144,
+        "registrations": 72,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "tiles-capture-chain": {
+        "allocations": 576,
+        "frees": 576,
+        "registrations": 72,
+        "ordinary_synchronizations": 72,
+        "error": 0
+      },
+      "tiles-capture-streams": {
+        "allocations": 288,
+        "frees": 288,
+        "registrations": 144,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "precision-capture-cold": {
+        "allocations": 96,
+        "frees": 96,
+        "registrations": 48,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "precision-capture-chain": {
+        "allocations": 384,
+        "frees": 384,
+        "registrations": 48,
+        "ordinary_synchronizations": 48,
+        "error": 0
+      },
+      "precision-capture-streams": {
+        "allocations": 192,
+        "frees": 192,
+        "registrations": 96,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "short-validation-capture-cold": {
+        "allocations": 496,
+        "frees": 496,
+        "registrations": 248,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "short-validation-capture-chain": {
+        "allocations": 1984,
+        "frees": 1984,
+        "registrations": 248,
+        "ordinary_synchronizations": 248,
+        "error": 0
+      },
+      "short-validation-capture-streams": {
+        "allocations": 992,
+        "frees": 992,
+        "registrations": 496,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "large-capture-cold": {
+        "allocations": 48,
+        "frees": 48,
+        "registrations": 24,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      },
+      "large-capture-chain": {
+        "allocations": 192,
+        "frees": 192,
+        "registrations": 24,
+        "ordinary_synchronizations": 24,
+        "error": 0
+      },
+      "large-capture-streams": {
+        "allocations": 96,
+        "frees": 96,
+        "registrations": 48,
+        "ordinary_synchronizations": 0,
+        "error": 0
+      }
+    }
+  },
+  "historical_prototype_comparison": {
+    "kernel_sha256": "26db80dc1981ec3fc0332e6bc875168c52d665fcc751937ca72581839f78a8af",
+    "input_sha256": "55d9cca489f2f6ae9b1a59c3ed94a7c826a43a04fbe6573e7798d17bb1cac8ca",
+    "metric": "median Scores-start to Finish-end interval after 2 of 12 warmups",
+    "task_types": [
+      "AI_VECTOR_CORE",
+      "MIX_AIC"
+    ],
+    "cases": 24,
+    "rows": [
+      {
+        "spec": {
+          "index": 0,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 1,
+          "ta": false,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 662.047,
+        "scores_us": 105.75800000000001,
+        "finish_us": 14.659500000000001,
+        "gap_us": 1.0125000000000028,
+        "duration_sum_us": 120.43700000000001,
+        "interval_us": 121.5,
+        "cube_over_vector": 0.1835217137151894
+      },
+      {
+        "spec": {
+          "index": 1,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 1,
+          "ta": false,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 456.93100000000004,
+        "scores_us": 95.408,
+        "finish_us": 14.6295,
+        "gap_us": 0.991500000000002,
+        "duration_sum_us": 110.1385,
+        "interval_us": 111.125,
+        "cube_over_vector": 0.24319864487198284
+      },
+      {
+        "spec": {
+          "index": 2,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 1,
+          "ta": true,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 680.1865,
+        "scores_us": 115.6075,
+        "finish_us": 14.539,
+        "gap_us": 0.6920000000000002,
+        "duration_sum_us": 130.1275,
+        "interval_us": 131.0,
+        "cube_over_vector": 0.19259423702175799
+      },
+      {
+        "spec": {
+          "index": 3,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 1,
+          "ta": true,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 468.361,
+        "scores_us": 98.988,
+        "finish_us": 14.34,
+        "gap_us": 0.902000000000001,
+        "duration_sum_us": 113.4175,
+        "interval_us": 114.25,
+        "cube_over_vector": 0.24393576749558568
+      },
+      {
+        "spec": {
+          "index": 4,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 2,
+          "ta": false,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 662.137,
+        "scores_us": 106.19800000000001,
+        "finish_us": 14.43,
+        "gap_us": 0.911999999999999,
+        "duration_sum_us": 120.688,
+        "interval_us": 121.5,
+        "cube_over_vector": 0.1834967687955816
+      },
+      {
+        "spec": {
+          "index": 5,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 2,
+          "ta": false,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 456.69100000000003,
+        "scores_us": 96.038,
+        "finish_us": 14.309999999999999,
+        "gap_us": 0.8719999999999999,
+        "duration_sum_us": 110.318,
+        "interval_us": 111.375,
+        "cube_over_vector": 0.24387386657499271
+      },
+      {
+        "spec": {
+          "index": 6,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 2,
+          "ta": true,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 680.236,
+        "scores_us": 115.93799999999999,
+        "finish_us": 14.370000000000001,
+        "gap_us": 1.0875000000000057,
+        "duration_sum_us": 130.27749999999997,
+        "interval_us": 131.25,
+        "cube_over_vector": 0.19294774166612763
+      },
+      {
+        "spec": {
+          "index": 7,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 2,
+          "ta": true,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 469.8705,
+        "scores_us": 98.938,
+        "finish_us": 14.33,
+        "gap_us": 0.8669999999999973,
+        "duration_sum_us": 113.208,
+        "interval_us": 114.0,
+        "cube_over_vector": 0.24262004105386484
+      },
+      {
+        "spec": {
+          "index": 8,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 1,
+          "ta": false,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 4745.4349999999995,
+        "scores_us": 376.102,
+        "finish_us": 27.6595,
+        "gap_us": 0.9329999999999927,
+        "duration_sum_us": 403.681,
+        "interval_us": 404.5,
+        "cube_over_vector": 0.08523981468506049
+      },
+      {
+        "spec": {
+          "index": 9,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 1,
+          "ta": false,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 3419.712,
+        "scores_us": 370.652,
+        "finish_us": 27.619500000000002,
+        "gap_us": 1.0475000000000136,
+        "duration_sum_us": 398.36199999999997,
+        "interval_us": 399.5,
+        "cube_over_vector": 0.11682270319839799
+      },
+      {
+        "spec": {
+          "index": 10,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 1,
+          "ta": true,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 4991.96,
+        "scores_us": 438.182,
+        "finish_us": 27.6695,
+        "gap_us": 0.8289999999999793,
+        "duration_sum_us": 465.94100000000003,
+        "interval_us": 466.875,
+        "cube_over_vector": 0.09352538882523097
+      },
+      {
+        "spec": {
+          "index": 11,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 1,
+          "ta": true,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 3570.308,
+        "scores_us": 417.04150000000004,
+        "finish_us": 27.6295,
+        "gap_us": 1.073500000000024,
+        "duration_sum_us": 444.78099999999995,
+        "interval_us": 445.75,
+        "cube_over_vector": 0.12484917267641896
+      },
+      {
+        "spec": {
+          "index": 12,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 2,
+          "ta": false,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 4745.105,
+        "scores_us": 378.4525,
+        "finish_us": 27.6295,
+        "gap_us": 0.8920000000000243,
+        "duration_sum_us": 406.2215,
+        "interval_us": 407.0,
+        "cube_over_vector": 0.085772601449283
+      },
+      {
+        "spec": {
+          "index": 13,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 2,
+          "ta": false,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 3419.0119999999997,
+        "scores_us": 373.4925,
+        "finish_us": 27.6595,
+        "gap_us": 0.9924999999999784,
+        "duration_sum_us": 401.342,
+        "interval_us": 402.25,
+        "cube_over_vector": 0.11765094711571648
+      },
+      {
+        "spec": {
+          "index": 14,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 2,
+          "ta": true,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 4989.49,
+        "scores_us": 437.2715,
+        "finish_us": 27.698999999999998,
+        "gap_us": 1.0740000000000123,
+        "duration_sum_us": 464.8805,
+        "interval_us": 465.875,
+        "cube_over_vector": 0.09337126640197696
+      },
+      {
+        "spec": {
+          "index": 15,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 2,
+          "ta": true,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 3569.5485,
+        "scores_us": 417.9015,
+        "finish_us": 27.6095,
+        "gap_us": 0.88900000000001,
+        "duration_sum_us": 445.55150000000003,
+        "interval_us": 446.5,
+        "cube_over_vector": 0.125085847691942
+      },
+      {
+        "spec": {
+          "index": 16,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 1,
+          "ta": false,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1565.7685000000001,
+        "scores_us": 245.72500000000002,
+        "finish_us": 213.186,
+        "gap_us": 0.8499999999999943,
+        "duration_sum_us": 458.541,
+        "interval_us": 459.375,
+        "cube_over_vector": 0.2933862828381079
+      },
+      {
+        "spec": {
+          "index": 17,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 1,
+          "ta": false,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1113.068,
+        "scores_us": 349.88300000000004,
+        "finish_us": 213.20600000000002,
+        "gap_us": 0.8369999999999891,
+        "duration_sum_us": 563.559,
+        "interval_us": 564.375,
+        "cube_over_vector": 0.5070444932385083
+      },
+      {
+        "spec": {
+          "index": 18,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 1,
+          "ta": true,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1569.079,
+        "scores_us": 230.8955,
+        "finish_us": 213.336,
+        "gap_us": 0.8799999999999955,
+        "duration_sum_us": 444.25100000000003,
+        "interval_us": 445.375,
+        "cube_over_vector": 0.2838448542106548
+      },
+      {
+        "spec": {
+          "index": 19,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 1,
+          "ta": true,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1119.9875,
+        "scores_us": 343.84299999999996,
+        "finish_us": 212.74599999999998,
+        "gap_us": 1.141999999999996,
+        "duration_sum_us": 557.029,
+        "interval_us": 558.125,
+        "cube_over_vector": 0.4983314545921272
+      },
+      {
+        "spec": {
+          "index": 20,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 2,
+          "ta": false,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1566.1080000000002,
+        "scores_us": 247.3355,
+        "finish_us": 213.25549999999998,
+        "gap_us": 0.9000000000000057,
+        "duration_sum_us": 460.5005,
+        "interval_us": 461.5,
+        "cube_over_vector": 0.2946795495585234
+      },
+      {
+        "spec": {
+          "index": 21,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 2,
+          "ta": false,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1113.8780000000002,
+        "scores_us": 346.053,
+        "finish_us": 213.3155,
+        "gap_us": 0.8020000000000209,
+        "duration_sum_us": 559.3685,
+        "interval_us": 560.25,
+        "cube_over_vector": 0.5029724978857648
+      },
+      {
+        "spec": {
+          "index": 22,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 2,
+          "ta": true,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1570.3285,
+        "scores_us": 231.74599999999998,
+        "finish_us": 213.226,
+        "gap_us": 0.8345000000000056,
+        "duration_sum_us": 444.81100000000004,
+        "interval_us": 445.75,
+        "cube_over_vector": 0.28385780427471063
+      },
+      {
+        "spec": {
+          "index": 23,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 2,
+          "ta": true,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1119.7375,
+        "scores_us": 348.653,
+        "finish_us": 213.2255,
+        "gap_us": 1.0370000000000061,
+        "duration_sum_us": 561.809,
+        "interval_us": 562.875,
+        "cube_over_vector": 0.5026847810312685
+      }
+    ],
+    "median_cube_over_vector": 0.21778389135999623
+  },
+  "competition": {
+    "status": "pending for the new hybrid kernel",
+    "last_passed_vector_commit": "e8ec315",
+    "passed": 15,
+    "total": 15
+  },
+  "same_round_comparison": {
+    "kernel_sha256": "32b012d2817efebaee75b5d649147fa9a77ce6740737deca8fa3da805e9e8b87",
+    "input_sha256": "55d9cca489f2f6ae9b1a59c3ed94a7c826a43a04fbe6573e7798d17bb1cac8ca",
+    "metric": "median Scores-start to Finish-end interval after 2 of 12 warmups",
+    "task_types": [
+      "AI_VECTOR_CORE",
+      "MIX_AIC"
+    ],
+    "cases": 24,
+    "rows": [
+      {
+        "spec": {
+          "index": 0,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 1,
+          "ta": false,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 662.0065,
+        "scores_us": 106.158,
+        "finish_us": 14.52,
+        "gap_us": 0.911999999999999,
+        "duration_sum_us": 120.71799999999999,
+        "interval_us": 121.625,
+        "cube_over_vector": 0.18372176104011065
+      },
+      {
+        "spec": {
+          "index": 1,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 1,
+          "ta": false,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 457.231,
+        "scores_us": 95.3485,
+        "finish_us": 14.54,
+        "gap_us": 1.0420000000000016,
+        "duration_sum_us": 109.97749999999999,
+        "interval_us": 111.0,
+        "cube_over_vector": 0.24276569174006138
+      },
+      {
+        "spec": {
+          "index": 2,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 1,
+          "ta": true,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 681.0565,
+        "scores_us": 115.3875,
+        "finish_us": 14.55,
+        "gap_us": 1.1229999999999976,
+        "duration_sum_us": 129.808,
+        "interval_us": 130.875,
+        "cube_over_vector": 0.19216467356232558
+      },
+      {
+        "spec": {
+          "index": 3,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 1,
+          "ta": true,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 469.631,
+        "scores_us": 99.098,
+        "finish_us": 14.33,
+        "gap_us": 0.9669999999999987,
+        "duration_sum_us": 113.4575,
+        "interval_us": 114.375,
+        "cube_over_vector": 0.24354227042081977
+      },
+      {
+        "spec": {
+          "index": 4,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 2,
+          "ta": false,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 662.4269999999999,
+        "scores_us": 106.178,
+        "finish_us": 14.420000000000002,
+        "gap_us": 0.9420000000000002,
+        "duration_sum_us": 120.5375,
+        "interval_us": 121.5,
+        "cube_over_vector": 0.18341643683002054
+      },
+      {
+        "spec": {
+          "index": 5,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 2,
+          "ta": false,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 457.28099999999995,
+        "scores_us": 95.8785,
+        "finish_us": 14.309000000000001,
+        "gap_us": 1.1409999999999982,
+        "duration_sum_us": 110.22749999999999,
+        "interval_us": 111.375,
+        "cube_over_vector": 0.2435592119506387
+      },
+      {
+        "spec": {
+          "index": 6,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 2,
+          "ta": true,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 680.8765,
+        "scores_us": 115.5475,
+        "finish_us": 14.3595,
+        "gap_us": 0.9675000000000011,
+        "duration_sum_us": 129.91750000000002,
+        "interval_us": 130.875,
+        "cube_over_vector": 0.19221547519998122
+      },
+      {
+        "spec": {
+          "index": 7,
+          "shape": [
+            1,
+            512,
+            1024,
+            128
+          ],
+          "dtype": 2,
+          "ta": true,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 470.68,
+        "scores_us": 98.99799999999999,
+        "finish_us": 14.2795,
+        "gap_us": 0.8669999999999973,
+        "duration_sum_us": 113.348,
+        "interval_us": 114.125,
+        "cube_over_vector": 0.24246834367298375
+      },
+      {
+        "spec": {
+          "index": 8,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 1,
+          "ta": false,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 4747.815,
+        "scores_us": 375.753,
+        "finish_us": 27.679499999999997,
+        "gap_us": 1.0180000000000007,
+        "duration_sum_us": 403.48249999999996,
+        "interval_us": 404.375,
+        "cube_over_vector": 0.0851707574958165
+      },
+      {
+        "spec": {
+          "index": 9,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 1,
+          "ta": false,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 3421.362,
+        "scores_us": 370.573,
+        "finish_us": 27.639499999999998,
+        "gap_us": 0.9470000000000027,
+        "duration_sum_us": 398.222,
+        "interval_us": 399.25,
+        "cube_over_vector": 0.11669329348955182
+      },
+      {
+        "spec": {
+          "index": 10,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 1,
+          "ta": true,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 4995.02,
+        "scores_us": 436.01099999999997,
+        "finish_us": 27.639499999999998,
+        "gap_us": 0.88900000000001,
+        "duration_sum_us": 463.651,
+        "interval_us": 464.5,
+        "cube_over_vector": 0.09299262065016756
+      },
+      {
+        "spec": {
+          "index": 11,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 1,
+          "ta": true,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 3573.6985,
+        "scores_us": 416.222,
+        "finish_us": 27.5895,
+        "gap_us": 0.9279999999999973,
+        "duration_sum_us": 443.841,
+        "interval_us": 444.75,
+        "cube_over_vector": 0.12445090149602715
+      },
+      {
+        "spec": {
+          "index": 12,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 2,
+          "ta": false,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 4747.6855,
+        "scores_us": 377.043,
+        "finish_us": 27.639,
+        "gap_us": 1.0619999999999834,
+        "duration_sum_us": 404.742,
+        "interval_us": 405.75,
+        "cube_over_vector": 0.08546269545444829
+      },
+      {
+        "spec": {
+          "index": 13,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 2,
+          "ta": false,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 3420.971,
+        "scores_us": 374.812,
+        "finish_us": 27.569000000000003,
+        "gap_us": 0.9424999999999955,
+        "duration_sum_us": 402.302,
+        "interval_us": 403.25,
+        "cube_over_vector": 0.11787588962315085
+      },
+      {
+        "spec": {
+          "index": 14,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 2,
+          "ta": true,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 4995.1105,
+        "scores_us": 437.971,
+        "finish_us": 27.589,
+        "gap_us": 1.0289999999999964,
+        "duration_sum_us": 465.571,
+        "interval_us": 466.625,
+        "cube_over_vector": 0.09341635185047459
+      },
+      {
+        "spec": {
+          "index": 15,
+          "shape": [
+            1,
+            1024,
+            4096,
+            128
+          ],
+          "dtype": 2,
+          "ta": true,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 3572.5285000000003,
+        "scores_us": 415.9715,
+        "finish_us": 27.5595,
+        "gap_us": 0.9879999999999995,
+        "duration_sum_us": 443.471,
+        "interval_us": 444.625,
+        "cube_over_vector": 0.12445666983482426
+      },
+      {
+        "spec": {
+          "index": 16,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 1,
+          "ta": false,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1566.609,
+        "scores_us": 245.5655,
+        "finish_us": 213.1755,
+        "gap_us": 0.9500000000000028,
+        "duration_sum_us": 458.591,
+        "interval_us": 459.75,
+        "cube_over_vector": 0.2934682489376737
+      },
+      {
+        "spec": {
+          "index": 17,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 1,
+          "ta": false,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1113.9575,
+        "scores_us": 338.87350000000004,
+        "finish_us": 212.905,
+        "gap_us": 1.0464999999999804,
+        "duration_sum_us": 551.799,
+        "interval_us": 552.875,
+        "cube_over_vector": 0.49631606232733294
+      },
+      {
+        "spec": {
+          "index": 18,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 1,
+          "ta": true,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1570.1689999999999,
+        "scores_us": 232.1255,
+        "finish_us": 213.21550000000002,
+        "gap_us": 1.144999999999996,
+        "duration_sum_us": 445.31100000000004,
+        "interval_us": 446.375,
+        "cube_over_vector": 0.28428468527910056
+      },
+      {
+        "spec": {
+          "index": 19,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 1,
+          "ta": true,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1121.0369999999998,
+        "scores_us": 337.74350000000004,
+        "finish_us": 213.39600000000002,
+        "gap_us": 0.9815000000000111,
+        "duration_sum_us": 551.149,
+        "interval_us": 552.125,
+        "cube_over_vector": 0.49251273597570827
+      },
+      {
+        "spec": {
+          "index": 20,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 2,
+          "ta": false,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1566.569,
+        "scores_us": 245.655,
+        "finish_us": 213.175,
+        "gap_us": 0.9500000000000028,
+        "duration_sum_us": 458.761,
+        "interval_us": 459.75,
+        "cube_over_vector": 0.2934757422111634
+      },
+      {
+        "spec": {
+          "index": 21,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 2,
+          "ta": false,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1114.0974999999999,
+        "scores_us": 344.923,
+        "finish_us": 213.1055,
+        "gap_us": 0.9420000000000073,
+        "duration_sum_us": 558.0285,
+        "interval_us": 559.125,
+        "cube_over_vector": 0.5018636160659189
+      },
+      {
+        "spec": {
+          "index": 22,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 2,
+          "ta": true,
+          "tb": false,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1570.269,
+        "scores_us": 232.9855,
+        "finish_us": 213.385,
+        "gap_us": 0.8645000000000067,
+        "duration_sum_us": 446.26099999999997,
+        "interval_us": 447.0,
+        "cube_over_vector": 0.28466460205225985
+      },
+      {
+        "spec": {
+          "index": 23,
+          "shape": [
+            1,
+            8192,
+            257,
+            40
+          ],
+          "dtype": 2,
+          "ta": true,
+          "tb": true,
+          "cores": 0,
+          "mode": "random"
+        },
+        "vector_kernel_us": 1120.2975000000001,
+        "scores_us": 339.123,
+        "finish_us": 213.21550000000002,
+        "gap_us": 1.1670000000000016,
+        "duration_sum_us": 552.829,
+        "interval_us": 553.875,
+        "cube_over_vector": 0.49439992501991653
+      }
+    ],
+    "median_cube_over_vector": 0.2173419094364825,
+    "vector_kernel_sha256": "bb89ad3cba93c280286be5c32b6f9a1fd2b0aa665d46d22ba2db983e38cb669e",
+    "profile_counts": {
+      "hybrid": 576,
+      "vector": 288
+    }
+  }
+}

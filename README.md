@@ -1,6 +1,6 @@
 # BatchMatmulMaxSum
 
-Ascend C 实现，支持 FP16/BF16 输入、四种存储布局和 FP32 输出。正确性基线通过赛事评测 15/15，性能优化版本也通过本轮赛事评测 15/15；截图与逐项耗时见 [性能记录](docs/performance.md)。基线及性能优化版本的真机验证数据分别见 [验证记录](docs/validation.md) 和 [性能记录](docs/performance.md)。
+Ascend C 实现，支持 FP16/BF16 输入、四种存储布局和 FP32 输出。此前的 Vector 正确性基线和性能优化版本均通过赛事 15/15，见 [验证记录](docs/validation.md) 与 [Vector 性能记录](docs/performance.md)。当前加入大型短 K 的 Cube 路径，验证与计时单独记录在 [Cube 性能记录](docs/cube-performance.md)。
 
 - [算子契约](cann_problem.md)
 - [构建与验证](solution/README.md)

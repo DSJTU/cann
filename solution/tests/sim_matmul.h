@@ -1,0 +1,108 @@
+// Synchronous mathematical model for layout, packing and bounds checks.
+// FP64 dot products do not model Cube precision, pipelines or graph lifetime.
+#pragma once
+#include <cstdlib>
+#define __kfc_workspace__
+using aclError = int;
+constexpr aclError ACL_SUCCESS = 0;
+constexpr int ACL_MEM_MALLOC_HUGE_FIRST = 0;
+using aclmdlRI = void*;
+using aclrtCallback = void (*)(void*);
+enum aclmdlRICaptureStatus {
+    ACL_MODEL_RI_CAPTURE_STATUS_NONE,
+    ACL_MODEL_RI_CAPTURE_STATUS_ACTIVE,
+    ACL_MODEL_RI_CAPTURE_STATUS_INVALIDATED
+};
+inline aclError aclrtMalloc(void** ptr, size_t size, int) {
+    *ptr = std::malloc(size);
+    return *ptr ? ACL_SUCCESS : 1;
+}
+inline aclError aclrtFree(void* ptr) { std::free(ptr); return ACL_SUCCESS; }
+inline aclError aclrtSynchronizeStreamWithTimeout(aclrtStream, int) { return ACL_SUCCESS; }
+inline aclError aclmdlRICaptureGetInfo(aclrtStream, aclmdlRICaptureStatus* status, aclmdlRI* model) {
+    *status = ACL_MODEL_RI_CAPTURE_STATUS_NONE; *model = nullptr; return ACL_SUCCESS;
+}
+inline aclError aclmdlRIDestroyRegisterCallback(aclmdlRI, aclrtCallback, void*) {
+    throw std::runtime_error("graph ownership is not modeled by the CPU test");
+}
+enum class CubeFormat { ND };
+namespace AscendC { namespace tiling {
+struct TCubeTiling { uint32_t baseM = 32, baseN = 64, orgM = 0, orgN = 0, orgK = 0; };
+}}
+namespace AscendC {
+inline void Max(LocalTensor<float> dst, LocalTensor<float> a, LocalTensor<float> b, uint32_t count) {
+    dst.Aligned(); a.Aligned(); b.Aligned();
+    for (uint32_t i=0;i<count;++i) dst.SetValue(i,std::max(a.GetValue(i),b.GetValue(i)));
+}
+}
+inline void* GetSysWorkSpacePtr() { return nullptr; }
+namespace platform_ascendc {
+struct PlatformAscendC { size_t GetLibApiWorkSpaceSize() const { return 64; } };
+struct PlatformAscendCManager {
+    static PlatformAscendC* GetInstance(const char*) { static PlatformAscendC platform; return &platform; }
+};
+}
+namespace matmul_tiling {
+enum class TPosition { GM, LCM };
+using CubeFormat = ::CubeFormat;
+enum class DataType { DT_FLOAT16, DT_BF16, DT_FLOAT };
+class MatmulApiTiling {
+    AscendC::tiling::TCubeTiling tiling;
+public:
+    explicit MatmulApiTiling(const platform_ascendc::PlatformAscendC&) {}
+    void SetAType(TPosition, CubeFormat, DataType, bool) {}
+    void SetBType(TPosition, CubeFormat, DataType, bool) {}
+    void SetCType(TPosition, CubeFormat, DataType) {}
+    void SetShape(uint32_t m, uint32_t n, uint32_t) { tiling.baseM=m; tiling.baseN=n; }
+    void SetOrgShape(uint32_t m, uint32_t n, uint32_t k) { tiling.orgM=m; tiling.orgN=n; tiling.orgK=k; }
+    void SetBias(bool) {}
+    void SetFixSplit(uint32_t m, uint32_t n, int) { tiling.baseM=m; tiling.baseN=n; }
+    void SetBufferSpace(int,int,int) {}
+    int GetTiling(AscendC::tiling::TCubeTiling& output) const { output=tiling; return 0; }
+};
+}
+namespace matmul {
+template <AscendC::TPosition POSITION, CubeFormat FORMAT, typename TYPE, bool ISTRANS = false>
+struct MatmulType { using T = TYPE; static constexpr bool isTrans = ISTRANS; };
+template <typename A, typename B, typename C, typename Bias>
+class Matmul {
+    AscendC::GlobalTensor<typename A::T> a;
+    AscendC::GlobalTensor<typename B::T> b;
+    uint32_t orgM=0, orgN=0, orgK=0, m=0, n=0, k=0, baseM=0, baseN=0;
+    bool ta=false, tb=false, done=true;
+public:
+    void Init(const AscendC::tiling::TCubeTiling* t) {
+        orgM=t->orgM; orgN=t->orgN; orgK=t->orgK; baseM=t->baseM; baseN=t->baseN;
+    }
+    void SetOrgShape(uint32_t om, uint32_t on, uint32_t ok) { orgM=om; orgN=on; orgK=ok; }
+    void SetSingleShape(uint32_t sm, uint32_t sn, uint32_t sk) {
+        if (!sm || !sn || !sk || sm>baseM || sn>baseN || sk>orgK)
+            throw std::runtime_error("CPU Matmul only models one valid tile per request");
+        m=sm; n=sn; k=sk; done=false;
+    }
+    void SetTensorA(AscendC::GlobalTensor<typename A::T> input, bool trans) {
+        if (trans && !A::isTrans) throw std::runtime_error("MatmulType must enable A transpose");
+        a=input; ta=trans;
+    }
+    void SetTensorB(AscendC::GlobalTensor<typename B::T> input, bool trans) {
+        if (trans && !B::isTrans) throw std::runtime_error("MatmulType must enable B transpose");
+        b=input; tb=trans;
+    }
+    template <bool sync=true> bool Iterate() const { return !done; }
+    template <bool sync=true> void GetTensorC(AscendC::LocalTensor<typename C::T> output, int atomic, bool sequential) {
+        if (done || atomic || !sequential) throw std::runtime_error("unexpected CPU Matmul output mode");
+        for (uint32_t row=0;row<m;++row) for (uint32_t col=0;col<n;++col) {
+            double value=0;
+            for (uint32_t kk=0;kk<k;++kk) {
+                const auto av=a.GetValue(ta ? kk*orgM+row : row*orgK+kk);
+                const auto bv=b.GetValue(tb ? col*orgK+kk : kk*orgN+col);
+                value+=double(float(av))*double(float(bv));
+            }
+            output.SetValue(row*n+col,typename C::T(value));
+        }
+        done=true;
+    }
+    void End() const { if (!done) throw std::runtime_error("Matmul result was not consumed"); }
+};
+}
+#define REGIST_MATMUL_OBJ(pipe, workspace, object, tiling) object.Init(tiling)

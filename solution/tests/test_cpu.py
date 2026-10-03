@@ -32,8 +32,16 @@ def cpu_source(source_path):
     launch = re.compile(r'(Baseline<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);')
     source, count = launch.subn(r'sim::Launch(\2, [&] { \1(\3); });', source)
     assert count == 8, f'unexpected launch count: {count}'
+    source, count = re.subn(
+        r'(Scores<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
+        r'sim::LaunchMixed(\2, [&] { \1(\3); });', source)
+    assert count == 2, f'unexpected Cube launch count: {count}'
+    source, count = re.subn(
+        r'(Finish)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
+        r'sim::Launch(\2, [&] { \1(\3); });', source)
+    assert count == 1, f'unexpected Finish launch count: {count}'
     assert '<<<' not in source
-    return source
+    return '#include "sim_matmul.h"\n' + source
 
 
 def quantize(values, dtype):
@@ -107,6 +115,10 @@ def performance_cases():
               (1, 64, 257, 128), (1, 129, 257, 128)]
     for i, (shape, dtype, ta, tb) in enumerate(itertools.product(shapes, (1, 2), (False, True), (False, True))):
         yield shape, dtype, ta, tb, (1, 20)[(i // 2) % 2], 'random'
+    # Cross the actual Cube dispatch threshold, including M/N tails and worker reuse.
+    for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
+        yield (1, 257, 513, 128), dtype, ta, tb, 20, 'random'
+        yield (1, 1649, 257, 40), dtype, ta, tb, 20, 'negative'
 
 
 def make_inputs(shape, mode, rng):
