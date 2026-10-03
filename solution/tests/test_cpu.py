@@ -168,7 +168,7 @@ def short_cube_cases():
 
 
 def long_cube_cases():
-    """Cross production long-K dispatch: K/M/N tails, reuse, compensation."""
+    """Cross long-K dispatch, panel windows, reuse and compensation."""
     definitions = [((1, 65, 129, 8192), mode) for mode in
                    ('k-cancellation', 'mixed-magnitude', 'close-max', 'block-cancellation')]
     definitions += [((4, 65, 129, 256), 'random'), ((8, 33, 129, 392), 'random'),
@@ -183,6 +183,24 @@ def long_cube_cases():
     for i, ((shape, mode), dtype, ta, tb) in enumerate(itertools.product(
             definitions, (1, 2), (False, True), (False, True))):
         yield shape, dtype, ta, tb, (1, 20)[i % 2], mode
+    # At one core these cover 128/256-column windows, multiple windows, short
+    # windows and strided C reads. At 20 cores N partitions may keep width 64.
+    windows = [((1, 64, 129, 512), 'random'),
+               ((1, 64, 257, 256), 'close-max'),
+               ((1, 64, 385, 256), 'negative'),
+               ((1, 65, 513, 136), 'random'),
+               ((3, 65, 513, 136), 'partition'),
+               ((1, 65, 1025, 136), 'm-cancellation')]
+    for (shape, mode), dtype, ta, tb, cores in itertools.product(
+            windows, (1, 2), (False, True), (False, True), (1, 20)):
+        yield shape, dtype, ta, tb, cores, mode
+    # All 64 K panels inside a wide request; cancellation remains inside a
+    # hypothetical 512-K panel, so widening N must not widen Cube accumulation K.
+    for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
+        yield (1, 65, 257, 8192), dtype, ta, tb, 1, 'block-cancellation'
+        # Forty resident tasks at 20 cores each own four base-N tiles. Covers
+        # the 256-column batch path at production parallelism, including M tail.
+        yield (1, 257, 2048, 136), dtype, ta, tb, 20, 'random'
 
 
 def make_inputs(shape, mode, rng):

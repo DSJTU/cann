@@ -146,12 +146,17 @@ public:
     void End() const { if (pending || !done) throw std::runtime_error("Matmul result was not consumed"); }
     // One call covers every K panel. Each panel is a contiguous ND matrix of
     // singleCoreM x singleCoreK and singleCoreK x singleCoreN, separated by the
-    // element strides. C is row-major singleCoreM x singleCoreN per panel.
+    // element strides. Non-sequential C is row-major singleCoreM x singleCoreN.
+    // Sequential output is only modeled when each panel fits one base tile.
     void IterateBatch(AscendC::GlobalTensor<float> output, uint32_t batchA, uint32_t batchB,
-                      bool sequential, uint32_t strideA, uint32_t strideB, uint32_t strideC) {
+                      bool sequential, uint32_t strideA, uint32_t strideB, uint32_t strideC = 0) {
         if (pending || !done) throw std::runtime_error("Matmul request is still open");
-        if (!sequential || !batchA || batchA != batchB || !singleM || !singleN || !singleK)
+        if (!batchA || batchA != batchB || !singleM || !singleN || !singleK)
             throw std::runtime_error("CPU IterateBatch expects equal batches and explicit panel shape");
+        if (sequential && (singleM > baseM || singleN > baseN))
+            throw std::runtime_error("CPU IterateBatch does not model sequential multi-tile output");
+        // CANN reserves matrixStrideC=0; NORMAL writes contiguous M*N matrices.
+        if (!strideC) strideC = singleM * singleN;
         if (strideA < singleM * singleK || strideB < singleK * singleN || strideC < singleM * singleN)
             throw std::runtime_error("CPU IterateBatch stride is shorter than one panel");
         for (uint32_t panel = 0; panel < batchA; ++panel) {
@@ -170,7 +175,8 @@ public:
             }
         }
         bmmms_sim::MatmulRequests().fetch_add(1, std::memory_order_relaxed);
-        bmmms_sim::MatmulTiles().fetch_add(batchA, std::memory_order_relaxed);
+        bmmms_sim::MatmulTiles().fetch_add(uint64_t(batchA) * ((singleM + baseM - 1) / baseM) *
+            ((singleN + baseN - 1) / baseN), std::memory_order_relaxed);
     }
 };
 }
