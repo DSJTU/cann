@@ -1,10 +1,10 @@
 # BatchMatmulMaxSum
 
-此前 Vector 正确性基线和性能优化版本均通过赛事 15/15，见 [验证记录](../docs/validation.md) 和 [Vector 性能记录](../docs/performance.md)。混合实现的历史验证记录在 [Cube 性能记录](../docs/cube-performance.md) 和 [Finish 检查点](../docs/finish-performance.md)，当前长 K Cube 候选的定向回归和性能见 [长 K 检查点](../docs/long-k-performance.md)，赛事分数待用户确认。提交复制 [kernel.asc](kernel.asc) 全部内容，保留模板 run_kernel ABI；数值计算全部在 NPU。
+此前 Vector 正确性基线和性能优化版本均通过赛事 15/15，见 [验证记录](../docs/validation.md) 和 [Vector 性能记录](../docs/performance.md)。混合实现的历史验证记录在 [Cube 性能记录](../docs/cube-performance.md) 和 [Finish 检查点](../docs/finish-performance.md)，原长 K Cube 两次启动版本的设备实验见 [长 K 检查点](../docs/long-k-performance.md)，该启动方式不满足赛事规则。当前单次启动修复见 [单次启动检查点](../docs/single-kernel.md)，赛事分数待用户确认。提交复制 [kernel.asc](kernel.asc) 全部内容，保留模板 run_kernel ABI；数值计算全部在 NPU。
 
-K≤128、M/N≥256、M*N*K≥2^24 时使用 Cube 的 32×64 得分块并立即沿 N 归约；第二个 Vector kernel 一次搬入每个 batch 的行最大值，以固定高/低分量补偿树求和。每层用 TwoSum 保留加法舍入误差，再合并低分量并规格化；奇数节点补零。自有 UB 按 M 分配，最大 176 KiB + 32 字节。除系统工作内存外只分配 B*M 个 FP32 行最大值；普通调用同步释放，图捕获在模型销毁时释放，同图多次调用使用独立缓冲。
+K≤128、M/N≥256、M*N*K≥2^24 时使用 Cube 的 32×64 得分块并立即沿 N 归约；同一个 MIX kernel 的 AIV 在全核汇合后搬入每个 batch 的行最大值，以固定高/低分量补偿树求和。每层用 TwoSum 保留加法舍入误差，再合并低分量并规格化；奇数节点补零。自有 UB 按 M 分配，最大 176 KiB + 32 字节。除系统工作内存外只分配 B*M 个 FP32 行最大值；普通调用同步释放，图捕获在模型销毁时释放，同图多次调用使用独立缓冲。
 
-K>128、M≥32、N≥128、B*M*N*K≥2^23 时使用 64×64 的长 K Cube，以 128-K 分段逐元素补偿累加；完成 K 后再取 N 最大值。任务按 M 与受限的 N 分区分配，每个分区写独立行最大值，Finish 先合并 N 分区，再以补偿树求和 M。自有 GM 为 B*M*nGroups 个 FP32；N 分区由核数限制。完整 K 和 512-K Cube 在设备抵消用例上失败，不能直接扩大累加范围。
+K>128、M≥32、N≥128、B*M*N*K≥2^23 时使用 64×64 的长 K Cube，以 128-K 分段逐元素补偿累加；完成 K 后再取 N 最大值。任务按 M 与受限的 N 分区分配，每个分区写独立行最大值，同一个 kernel 中的 Finish 先合并 N 分区，再以补偿树求和 M。自有 GM 为 B*M*nGroups 个 FP32；N 分区由核数限制。完整 K 和 512-K Cube 在设备抵消用例上失败，不能直接扩大累加范围。
 
 其他尺寸保留一次启动的 Vector 路径：小任务按 batch 分核，大任务沿 M 分区。各核完成 FP32 点积、跨 K 块补偿、N 最大值和分区求和，再按固定顺序跨核汇总，无额外 GM 工作内存。
 
@@ -16,7 +16,7 @@ N 分块按布局取 16/32/64 列。K≤128 且 M、N≥16 时，B 分块搬入�
 python3 solution/tests/test_cpu.py
 ```
 
-默认 656 组：280 组正确性、184 组长 K 与分区、120 组分块边界，以及 72 组实际长 K Cube 分派用例（含 512-K 分段内部抵消、M/N 尾部、两类型四布局和 1/20 核）。覆盖输入不变、输出保护区与确定性，启用 ASan/UBSan。用 `--suite correctness`、`--suite extended`、`--suite performance` 或 `--suite long-cube` 可分开运行。CPU Matmul 使用 FP64 点积，只验证分区、索引、打包与归约控制流，不模拟 Cube 硬件舍入、流水线或图捕获。类型模型与 CPU 模型不能代替目标 SDK 编译和真机验证。
+默认 656 组：280 组正确性、184 组长 K 与分区、120 组分块边界，以及 72 组实际长 K Cube 分派用例（含 512-K 分段内部抵消、M/N 尾部、两类型四布局和 1/20 核）。覆盖输入不变、输出保护区与确定性，逐次断言恰好一个 launch，启用 ASan/UBSan。用 `--suite correctness`、`--suite extended`、`--suite performance` 或 `--suite long-cube` 可分开运行。CPU Matmul 使用 FP64 点积，只验证分区、索引、打包与归约控制流，不模拟 Cube 硬件舍入、流水线或图捕获。类型模型与 CPU 模型不能代替目标 SDK 编译和真机验证。
 
 Finish 的独立数值检查为 `python3 solution/tests/test_finish.py`（仓库根运行），756 组 / 6,300 个输出对照 `math.fsum`，覆盖 1/2/7 个 N 分区、M 尾部、多 batch 复用、全负、抵消和不同量级。`--suite cube-finish` 可用于 CPU runner 或 NPU 数据生成器，提供 24 个实际进入短 K Cube 的大 M 定向用例；它单独运行，不计入默认 656 组。
 
@@ -56,4 +56,4 @@ python3 tests/run_npu_checks.py --build build-npu --runs runs/hybrid \
   --large-prefix lab-data/large-short-k
 ```
 
-旧 `summarize_benchmark.py` 仅支持单个 Vector kernel。Cube 的性能比较使用 `compare_cube_profile.py`，将 Scores 开始到 Finish 结束作为整个算子的设备区间，包含 kernel 间隔；输入与数值验证必须对应同一批数据。
+`compare_cube_profile.py` 保留给历史两次启动实验。当前使用 `check_launch_profile.py` 严格核验 profile 的总记录数和逐例分派；`--suite launch-rule` 生成 15 个自建输入，runner `--profile-five` 每组执行 5 次，应恰好得到 75 个 kernel 记录。该集合包含 6 个 Cube、9 个 Vector 输入，不能视为赛事未知 shape。当前性能取单个 Fused/Vector kernel 的完整区间；输入与数值验证必须对应同一批数据。

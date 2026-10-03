@@ -17,7 +17,7 @@ int main() {
             const auto invoke = [&] {
                 sim::Launch(h[2], [&] {
                     bmmms_cube::Finish(reinterpret_cast<uint8_t*>(rows.data()),
-                        reinterpret_cast<uint8_t*>(y.data()), h[0], h[1], h[3]);
+                        reinterpret_cast<uint8_t*>(y.data()), h[0], h[1], h[3], h[2]);
                 });
             };
             invoke();

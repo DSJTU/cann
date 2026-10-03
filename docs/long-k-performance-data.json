@@ -1797,5 +1797,5 @@
     "passed": 756,
     "worst_error_over_tolerance": 0
   },
-  "competition_status": "awaiting user score; no PR"
+  "competition_status": "rejected_by_exactly_one_kernel_launch_rule"
 }

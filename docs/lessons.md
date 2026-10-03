@@ -71,6 +71,8 @@ Matmul 的 `GetTensorC<true>` 并不替代消费者到 Scalar 的完成依赖。
 
 ## 验证阶梯与诊断
 
+赛事每次迭代必须恰好启动一个 kernel。两阶段 Cube→Vector 即使精度、捕获和资源生命周期检查通过，仍会被 profiling 规则拒绝。每次关键检查点需核对真实设备 launch 数量；不能仅把两次 kernel 时间相加当作符合提交约束。融合 MIX 核中，计算阶段结束后每个 AIV（含无任务 worker）都恰好执行一次 SyncAll，再读取独立行最大值。使用 batch 调度防止多 stream 交叠造成全核汇合死锁，且归约 worker 步长为两倍逻辑 block 数。计算与最终归约的 TPipe 分阶段销毁/初始化以复用 UB，仍需真实 SDK 和设备验证。
+
 | 检查 | 能证明的范围 |
 | --- | --- |
 | CPU 模型 + ASan/UBSan | 控制流、索引、边界、初始化、模型下数值与确定性 |

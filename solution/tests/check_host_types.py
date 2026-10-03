@@ -77,13 +77,13 @@ def host_source(path):
         signature = match.group()[:-1]
         if '__global__' in signature:
             signature = re.sub(r'__(?:global|mix|schedmode)__\s*(?:\([^)]*\))?', '', signature)
-            names.extend(re.findall(r'void (Baseline|Scores|LongScores|Finish)\(', signature))
+            names.extend(re.findall(r'void (Baseline|Fused)\(', signature))
             replacement = signature + ';'
         else:
             replacement = ''
         source = source[:match.start()] + replacement + source[end:]
-    assert names == ['Baseline', 'Scores', 'LongScores', 'Finish'], names
-    for pattern, expected in ((r'Baseline<[^>]+>', 8), (r'(?:Long)?Scores<[^>]+>', 4), (r'Finish', 1)):
+    assert names == ['Baseline', 'Fused'], names
+    for pattern, expected in ((r'Baseline<[^>]+>', 8), (r'Fused<[^>]+>', 2)):
         source, count = re.subn(
             '(' + pattern + r')<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
             r'(void(stream), void(\2), \1(\3));', source)

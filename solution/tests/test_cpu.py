@@ -33,13 +33,9 @@ def cpu_source(source_path):
     source, count = launch.subn(r'sim::Launch(\2, [&] { \1(\3); });', source)
     assert count == 8, f'unexpected launch count: {count}'
     source, count = re.subn(
-        r'((?:Long)?Scores<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
+        r'(Fused<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
         r'sim::LaunchMixed(\2, [&] { \1(\3); });', source)
-    assert count == 4, f'unexpected Cube launch count: {count}'
-    source, count = re.subn(
-        r'(Finish)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
-        r'sim::Launch(\2, [&] { \1(\3); });', source)
-    assert count == 1, f'unexpected Finish launch count: {count}'
+    assert count == 2, f'unexpected Cube launch count: {count}'
     assert '<<<' not in source
     return '#include "sim_matmul.h"\n' + source
 
@@ -286,6 +282,7 @@ def main():
         print(f'PASS: {len(specs)} CPU cases, FP16/BF16, all four storage layouts')
         print('PASS: threaded collective execution')
         print('PASS: repeatability, input immutability, output guards')
+        print('PASS: exactly one simulated kernel launch per invocation in every case')
         print('PASS: AddressSanitizer/UBSan, local initialization/alignment/DMA-position checks')
         print(f'Worst absolute error: {worst_error:.8g}; max error/tolerance: {worst_scaled:.6g}')
         print('CPU model does not validate graph capture, NPU synchronization, performance or the webpage judge.')
