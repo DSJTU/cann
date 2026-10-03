@@ -138,11 +138,33 @@ def performance_cases():
         yield (1, 64, 257, 128), dtype, ta, tb, 20, 'close-max'
 
 
+def cube_finish_cases():
+    """Exercise the actual Cube dispatch and large-M compensated reduction."""
+    for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
+        yield (1, 1649, 257, 40), dtype, ta, tb, 20, 'm-cancellation'
+        yield (1, 8191, 257, 40), dtype, ta, tb, 20, 'm-magnitude'
+        # One core reuses Finish's UB across batches, with different row values.
+        yield (3, 8192, 257, 40), dtype, ta, tb, 1, 'm-cancellation'
+
+
 def make_inputs(shape, mode, rng):
     batch, m, n, k = shape
     a = rng.uniform(-1, 1, (batch, m, k))
     b = rng.uniform(-1, 1, (batch, k, n))
-    if mode == 'negative':
+    if mode in ('m-cancellation', 'm-magnitude'):
+        a.fill(0)
+        b.fill(0)
+        b[:, 0, :] = 1
+        for bi in range(batch):
+            values = a[bi, :, 0]
+            if mode == 'm-cancellation':
+                half = (m - 1) // 2
+                values[:half] = 1 + bi
+                values[half:2 * half] = -(1 + bi)
+                values[-1] = (bi + 1) * 2 ** -10
+            else:
+                values[:] = np.ldexp(rng.uniform(-1, 1, m), rng.integers(-12, 12, m))
+    elif mode == 'negative':
         a = np.abs(a) + .1
         b = -(np.abs(b) + .1)
     elif mode == 'zero':
@@ -184,7 +206,7 @@ def make_inputs(shape, mode, rng):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', choices=('all', 'correctness', 'extended', 'performance'), default='all')
+    parser.add_argument('--suite', choices=('all', 'correctness', 'extended', 'performance', 'cube-finish'), default='all')
     args = parser.parse_args()
     source_path = ROOT / 'kernel.asc'
     check_host_types()
@@ -205,6 +227,8 @@ def main():
             specs.extend(extended_cases())
         if args.suite in ('all', 'performance'):
             specs.extend(performance_cases())
+        if args.suite == 'cube-finish':
+            specs.extend(cube_finish_cases())
         payload = bytearray(struct.pack('<I', len(specs)))
         expected = []
         rng = np.random.default_rng(20261002)
