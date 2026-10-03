@@ -1,5 +1,7 @@
 # Cube 分块原型
 
+历史两次启动原型，违反当前赛事每次迭代一个 kernel 的约束。当前实现见 [单次启动检查点](../single_kernel/README.md)。
+
 独立原型以 A3 / Ascend910_9362 / CANN 9.0 / dav-2201 为目标，仅接受 K≤128。主实现的 Cube 路径源于这个版本，并对小矩阵和长 K 使用 Vector。
 
 混合核用 Matmul 的 GM ND 输入、FP32 VECIN 输出计算 32×64 得分块，立即沿 N 归约，只把行最大值写入 GM；第二个 Vector kernel 按原始 M 顺序补偿求和。用户工作内存为 `B*M*4` 字节，另需 Matmul 系统工作内存，不保存完整得分矩阵。
@@ -26,4 +28,4 @@ python3 solution/experiments/cube/data.py /tmp/bmmms-cube-data --suite short-val
 python3 solution/tests/npu_data.py --prefix /tmp/bmmms-cube-data --verify /tmp/bmmms-cube-output.bin
 ```
 
-生成器另支持默认 `tiles`（72）、`precision`（48）、`large`（24）集合。性能与主实现验证见 [Cube 性能记录](../../../docs/cube-performance.md)。接口参考 [CANN 9.0 GetTensorC](https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0639.html)，并已核对安装 SDK 的输出布局。
+生成器另支持默认 `tiles`（72）、`precision`（48）、`large`（24）集合。性能与主实现验证见 [Cube 性能记录](../../../docs/history/cube-performance.md)。接口参考 [CANN 9.0 GetTensorC](https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0639.html)，并已核对安装 SDK 的输出布局。

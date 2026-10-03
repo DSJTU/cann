@@ -1,6 +1,6 @@
 # BatchMatmulMaxSum
 
-此前 Vector 正确性基线和性能优化版本均通过赛事 15/15，见 [验证记录](../docs/validation.md) 和 [Vector 性能记录](../docs/performance.md)。混合实现的历史验证记录在 [Cube 性能记录](../docs/cube-performance.md) 和 [Finish 检查点](../docs/finish-performance.md)，原长 K Cube 两次启动版本的设备实验见 [长 K 检查点](../docs/long-k-performance.md)，该启动方式不满足赛事规则。当前单次启动修复见 [单次启动检查点](../docs/single-kernel.md)，赛事分数待用户确认。提交复制 [kernel.asc](kernel.asc) 全部内容，保留模板 run_kernel ABI；数值计算全部在 NPU。
+提交复制 [kernel.asc](kernel.asc) 全部内容，保留模板 run_kernel ABI；数值计算全部在 NPU。当前 `54cc8bd` 已完成设备验收和赛事 15/15 验证，用户确认提升，见 [单次启动检查点](../docs/single-kernel.md)。此前验证和设计实验统一收录在 [文档索引](../docs/README.md) 与 [实验索引](experiments/README.md)。
 
 K≤128、M/N≥256、M*N*K≥2^24 时使用 Cube 的 32×64 得分块并立即沿 N 归约；同一个 MIX kernel 的 AIV 在全核汇合后搬入每个 batch 的行最大值，以固定高/低分量补偿树求和。每层用 TwoSum 保留加法舍入误差，再合并低分量并规格化；奇数节点补零。自有 UB 按 M 分配，最大 176 KiB + 32 字节。除系统工作内存外只分配 B*M 个 FP32 行最大值；普通调用同步释放，图捕获在模型销毁时释放，同图多次调用使用独立缓冲。
 
@@ -56,4 +56,4 @@ python3 tests/run_npu_checks.py --build build-npu --runs runs/hybrid \
   --large-prefix lab-data/large-short-k
 ```
 
-`compare_cube_profile.py` 保留给历史两次启动实验。当前使用 `check_launch_profile.py` 严格核验 profile 的总记录数和逐例分派；`--suite launch-rule` 生成 15 个自建输入，runner `--profile-five` 每组执行 5 次，应恰好得到 75 个 kernel 记录。该集合包含 6 个 Cube、9 个 Vector 输入，不能视为赛事未知 shape。当前性能取单个 Fused/Vector kernel 的完整区间；输入与数值验证必须对应同一批数据。
+`summarize_benchmark.py` 支持当前 Baseline/Fused 单次启动的计时比较。`compare_cube_profile.py` 保留给历史两次启动实验。当前使用 `check_launch_profile.py` 严格核验 profile 的总记录数和逐例分派；`--suite launch-rule` 生成 15 个自建输入，runner `--profile-five` 每组执行 5 次，应恰好得到 75 个 kernel 记录。该集合包含 6 个 Cube、9 个 Vector 输入，不能视为赛事未知 shape。当前性能取单个 Fused/Vector kernel 的完整区间；输入与数值验证必须对应同一批数据。

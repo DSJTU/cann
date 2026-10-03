@@ -1335,7 +1335,7 @@
     "passed": 756,
     "worst_error_over_tolerance": 0
   },
-  "competition_status": "awaiting_user_score_after_exactly_one_launch_fix",
+  "competition_status": "user_confirmed_15_of_15_pass_and_improvement",
   "independent_profile_audit": {
     "baseline_rejection": "each iteration must launch exactly 1 kernel: expected 75, got 105",
     "candidate_records": 75,
@@ -1345,5 +1345,6 @@
     },
     "passed": true,
     "note": "Additional target audit on the actual CSVs and current input binaries after checkpoint completion; raw target audit is runs/independent-audit.json"
-  }
+  },
+  "scored_commit": "54cc8bd8b70c731872d5d96e9ecb73e82f078d79"
 }

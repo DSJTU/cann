@@ -21,4 +21,4 @@ python3 /tmp/long-k-grid/k128/solution/tests/test_cpu.py --suite extended
 
 `candidate_check.py` 用于隔离的实际候选检查点：目录需包含 `candidate/solution`、`baseline/solution` 及源码哈希的 `candidate-manifest.json`。它检查实际分派的 72 个 long-cube 输入、24 个大型短 K 归约输入和 32 个小型输入，以及重复、捕获和独立动态库调用，再同轮比较两类固定性能输入。脚本中的输入路径对应本次授权设备实验，迁移环境时需先恢复同一输入并核对哈希。
 
-实验结论与实际候选验证见 [长 K 记录](../../../docs/long-k-performance.md)。
+实验结论与实际候选验证见 [长 K 记录](../../../docs/history/long-k-performance.md)。

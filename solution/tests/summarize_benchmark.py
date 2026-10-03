@@ -5,12 +5,13 @@ These intervals include device queue/submission effects; they are not the
 judge's pure kernel timing. Both runs must use identical generated input data.
 """
 import argparse
-import csv
 import json
 import math
 from pathlib import Path
 import re
 import statistics
+
+from check_launch_profile import records
 
 
 def timings(path, count):
@@ -34,11 +35,15 @@ def profile_timings(directory, count):
     files = list(Path(directory).rglob('op_summary*.csv'))
     if len(files) != 1:
         raise ValueError(f'expected one operator summary in {directory}')
-    with files[0].open() as source:
-        rows = [r for r in csv.DictReader(source) if 'bmmms8Baseline' in r['Op Name']]
-    rows.sort(key=lambda r: float(r['Task Start Time(us)']))
+    rows = records(files[0])
     if len(rows) != count * 12:
-        raise ValueError(f'incomplete kernel profile in {directory}')
+        raise ValueError(f'expected {count * 12} single-kernel launches in {directory}, got {len(rows)}')
+    # Both sides may use different dispatch implementations, but each case
+    # must execute one consistent kernel for its two warmups and ten samples.
+    for i in range(count):
+        names = {row['Op Name'] for row in rows[i * 12:(i + 1) * 12]}
+        if len(names) != 1 or not any(kind in next(iter(names)) for kind in ('Baseline', 'Fused')):
+            raise ValueError(f'unexpected kernel dispatch for case {i} in {directory}')
     values = [float(r['Task Duration(us)']) for r in rows]
     if any(not math.isfinite(v) or v <= 0 for v in values):
         raise ValueError(f'invalid kernel duration in {directory}')
