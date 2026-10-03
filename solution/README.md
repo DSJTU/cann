@@ -1,8 +1,10 @@
 # BatchMatmulMaxSum
 
-此前 Vector 正确性基线和性能优化版本均通过赛事 15/15，见 [验证记录](../docs/validation.md) 和 [Vector 性能记录](../docs/performance.md)。混合实现的历史验证记录在 [Cube 性能记录](../docs/cube-performance.md)，当前 Finish 补偿树候选的定向回归和性能见 [Finish 检查点](../docs/finish-performance.md)，赛事分数待用户确认。提交复制 [kernel.asc](kernel.asc) 全部内容，保留模板 run_kernel ABI；数值计算全部在 NPU。
+此前 Vector 正确性基线和性能优化版本均通过赛事 15/15，见 [验证记录](../docs/validation.md) 和 [Vector 性能记录](../docs/performance.md)。混合实现的历史验证记录在 [Cube 性能记录](../docs/cube-performance.md) 和 [Finish 检查点](../docs/finish-performance.md)，当前长 K Cube 候选的定向回归和性能见 [长 K 检查点](../docs/long-k-performance.md)，赛事分数待用户确认。提交复制 [kernel.asc](kernel.asc) 全部内容，保留模板 run_kernel ABI；数值计算全部在 NPU。
 
 K≤128、M/N≥256、M*N*K≥2^24 时使用 Cube 的 32×64 得分块并立即沿 N 归约；第二个 Vector kernel 一次搬入每个 batch 的行最大值，以固定高/低分量补偿树求和。每层用 TwoSum 保留加法舍入误差，再合并低分量并规格化；奇数节点补零。自有 UB 按 M 分配，最大 176 KiB + 32 字节。除系统工作内存外只分配 B*M 个 FP32 行最大值；普通调用同步释放，图捕获在模型销毁时释放，同图多次调用使用独立缓冲。
+
+K>128、M≥32、N≥128、B*M*N*K≥2^23 时使用 64×64 的长 K Cube，以 128-K 分段逐元素补偿累加；完成 K 后再取 N 最大值。任务按 M 与受限的 N 分区分配，每个分区写独立行最大值，Finish 先合并 N 分区，再以补偿树求和 M。自有 GM 为 B*M*nGroups 个 FP32；N 分区由核数限制。完整 K 和 512-K Cube 在设备抵消用例上失败，不能直接扩大累加范围。
 
 其他尺寸保留一次启动的 Vector 路径：小任务按 batch 分核，大任务沿 M 分区。各核完成 FP32 点积、跨 K 块补偿、N 最大值和分区求和，再按固定顺序跨核汇总，无额外 GM 工作内存。
 
@@ -14,9 +16,9 @@ N 分块按布局取 16/32/64 列。K≤128 且 M、N≥16 时，B 分块搬入�
 python3 solution/tests/test_cpu.py
 ```
 
-默认 584 组：280 组正确性，184 组长 K 与分区（含多行复用 B 的抵消和尾列），120 组分块边界（含 A 缓存 128/129 行边界，以及 16 组 Cube 分派与 worker 复用）；覆盖两种类型、四种布局、输入不变、输出保护区与确定性，启用 ASan/UBSan。用 `--suite correctness`、`--suite extended` 或 `--suite performance` 可分开运行。CPU Matmul 使用 FP64 点积，只验证分区、索引、打包与归约控制流，不模拟 Cube 硬件舍入、流水线或图捕获。类型模型与 CPU 模型不能代替目标 SDK 编译和真机验证。
+默认 656 组：280 组正确性、184 组长 K 与分区、120 组分块边界，以及 72 组实际长 K Cube 分派用例（含 512-K 分段内部抵消、M/N 尾部、两类型四布局和 1/20 核）。覆盖输入不变、输出保护区与确定性，启用 ASan/UBSan。用 `--suite correctness`、`--suite extended`、`--suite performance` 或 `--suite long-cube` 可分开运行。CPU Matmul 使用 FP64 点积，只验证分区、索引、打包与归约控制流，不模拟 Cube 硬件舍入、流水线或图捕获。类型模型与 CPU 模型不能代替目标 SDK 编译和真机验证。
 
-Finish 的独立数值检查为 `python3 solution/tests/test_finish.py`（仓库根运行），252 组 / 2,100 个输出对照 `math.fsum`，覆盖 M 尾部、多 batch 复用、全负、抵消和不同量级。`--suite cube-finish` 可用于 CPU runner 或 NPU 数据生成器，提供 24 个实际进入 Cube 的大 M 定向用例；它单独运行，不计入默认 584 组。
+Finish 的独立数值检查为 `python3 solution/tests/test_finish.py`（仓库根运行），756 组 / 6,300 个输出对照 `math.fsum`，覆盖 1/2/7 个 N 分区、M 尾部、多 batch 复用、全负、抵消和不同量级。`--suite cube-finish` 可用于 CPU runner 或 NPU 数据生成器，提供 24 个实际进入短 K Cube 的大 M 定向用例；它单独运行，不计入默认 656 组。
 
 赛题日常迭代做相关本地检查并正常提交；关键检查点先做最小必要设备回归，再由用户跑分。确认提升后才提 PR。下方完整回归工具按需使用。
 

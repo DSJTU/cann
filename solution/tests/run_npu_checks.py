@@ -13,6 +13,12 @@ import re
 import subprocess
 
 
+def uses_cube(shape):
+    batch, m, n, k = shape
+    return ((k <= 128 and m >= 256 and n >= 256 and m * n * k >= 1 << 24) or
+            (k > 128 and m >= 32 and n >= 128 and batch * m * n * k >= 1 << 23))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--build', type=Path, default=Path('build-npu'))
@@ -56,9 +62,7 @@ def main():
                 raise RuntimeError(name+' needs BMMMS_TRACE_RUNTIME=ON')
             allocated, freed, error = map(int,summaries[0])
             metadata = json.loads(prefix.with_suffix('.json').read_text())
-            cubes = sum(1 for v in metadata if v['shape'][3] <= 128 and
-                        v['shape'][1] >= 256 and v['shape'][2] >= 256 and
-                        v['shape'][1]*v['shape'][2]*v['shape'][3] >= 1 << 24)
+            cubes = sum(uses_cube(v['shape']) for v in metadata)
             calls = {'--capture-cold': 1, '--capture-chain': 4,
                      '--capture-streams': 2, '--streams': 4, '--benchmark': 12}.get(mode, 2)
             registrations = len(re.findall(r'^INTERNAL_REGISTER ret=0$',log,re.M))
@@ -79,7 +83,7 @@ def main():
         save()
 
     try:
-        for suite in ('correctness','extended','performance'):
+        for suite in ('correctness','extended','performance','long-cube'):
             prefix = data/suite
             run('generate-'+suite,['python3',root/'tests/npu_data.py','--suite',suite,'--prefix',prefix])
             for mode in (None,'--capture-cold','--capture-chain','--capture-streams'):

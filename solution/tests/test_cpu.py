@@ -33,9 +33,9 @@ def cpu_source(source_path):
     source, count = launch.subn(r'sim::Launch(\2, [&] { \1(\3); });', source)
     assert count == 8, f'unexpected launch count: {count}'
     source, count = re.subn(
-        r'(Scores<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
+        r'((?:Long)?Scores<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
         r'sim::LaunchMixed(\2, [&] { \1(\3); });', source)
-    assert count == 2, f'unexpected Cube launch count: {count}'
+    assert count == 4, f'unexpected Cube launch count: {count}'
     source, count = re.subn(
         r'(Finish)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
         r'sim::Launch(\2, [&] { \1(\3); });', source)
@@ -147,6 +147,18 @@ def cube_finish_cases():
         yield (3, 8192, 257, 40), dtype, ta, tb, 1, 'm-cancellation'
 
 
+def long_cube_cases():
+    """Cross production long-K dispatch: K/M/N tails, reuse, compensation."""
+    definitions = [((1, 65, 129, 8192), mode) for mode in
+                   ('k-cancellation', 'mixed-magnitude', 'close-max', 'block-cancellation')]
+    definitions += [((4, 65, 129, 256), 'random'), ((8, 33, 129, 392), 'random'),
+                    ((1, 65, 129, 1024), 'random'), ((1, 33, 129, 8192), 'random'),
+                    ((4, 65, 129, 392), 'negative')]
+    for i, ((shape, mode), dtype, ta, tb) in enumerate(itertools.product(
+            definitions, (1, 2), (False, True), (False, True))):
+        yield shape, dtype, ta, tb, (1, 20)[i % 2], mode
+
+
 def make_inputs(shape, mode, rng):
     batch, m, n, k = shape
     a = rng.uniform(-1, 1, (batch, m, k))
@@ -196,6 +208,13 @@ def make_inputs(shape, mode, rng):
         b[:, :quarter, :] = large
         b[:, quarter:2 * quarter, :] = small
         b[:, 2 * quarter:3 * quarter, :] = -large
+    elif mode == 'block-cancellation':
+        a.fill(1)
+        b.fill(0)
+        for start in range(0, k, 512):
+            b[:, start:start + 128, :] = 4096
+            b[:, start + 128:start + 256, :] = 2 ** -10
+            b[:, start + 256:start + 384, :] = -4096
     elif mode == 'close-max':
         a.fill(1)
         b.fill(0)
@@ -206,7 +225,7 @@ def make_inputs(shape, mode, rng):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', choices=('all', 'correctness', 'extended', 'performance', 'cube-finish'), default='all')
+    parser.add_argument('--suite', choices=('all', 'correctness', 'extended', 'performance', 'cube-finish', 'long-cube'), default='all')
     args = parser.parse_args()
     source_path = ROOT / 'kernel.asc'
     check_host_types()
@@ -229,6 +248,8 @@ def main():
             specs.extend(performance_cases())
         if args.suite == 'cube-finish':
             specs.extend(cube_finish_cases())
+        if args.suite in ('all', 'long-cube'):
+            specs.extend(long_cube_cases())
         payload = bytearray(struct.pack('<I', len(specs)))
         expected = []
         rng = np.random.default_rng(20261002)

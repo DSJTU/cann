@@ -29,11 +29,19 @@ def main():
                 elif mode == 'magnitude':
                     values = np.ldexp(rng.uniform(-1, 1, (batch, m)),
                                       rng.integers(-40, 30, (batch, m))).astype(np.float32)
-                specs.append((batch, m, min(batch, 20), values))
-                expected.extend(np.float32(math.fsum(map(float, row))) for row in values)
+                for groups in (1, 2, 7):
+                    # Each row's winner belongs to a different N partition.
+                    # Preserve the adversarial M sum while exercising max first.
+                    partitions = np.broadcast_to(values[:, None, :], (batch, groups, m)).copy()
+                    partitions -= rng.uniform(1, 100, partitions.shape).astype(np.float32)
+                    for row in range(m):
+                        partitions[:, row % groups, row] = values[:, row]
+                    maxima = partitions.max(axis=1)
+                    specs.append((batch, m, min(batch, 20), groups, partitions))
+                    expected.extend(np.float32(math.fsum(map(float, row))) for row in maxima)
     payload = bytearray(struct.pack('<I', len(specs)))
-    for batch, m, cores, values in specs:
-        payload += struct.pack('<3I', batch, m, cores) + values.tobytes()
+    for batch, m, cores, groups, values in specs:
+        payload += struct.pack('<4I', batch, m, cores, groups) + values.tobytes()
     with tempfile.TemporaryDirectory(prefix='bmmms-finish-') as tmp:
         tmp = Path(tmp)
         (tmp / 'kernel_cpu.inc').write_text(cpu_source(ROOT / 'kernel.asc'))

@@ -2,7 +2,7 @@
 
 候选将 Cube 路径的 Finish 从逐行 Scalar Kahan 改为固定高/低分量向量补偿树。每个 batch 一次搬入 M 个 FP32 行最大值，每层 TwoSum 保留高分量加法误差，合并低分量后再次规格化。奇数节点配零，M 尾部不越界；偏移表由向量生成，UB 按 M 分配，最大自有缓冲 176 KiB + 32 字节。
 
-Vector、Scores、分派阈值、run_kernel ABI、GM 工作内存和图捕获所有权均保持原实现。候选 kernel SHA256：`41e78bd99e00d44a35420555c05a7638b56c05fd23c6ab3cedeae854d7526768`；基线为 `70c5d65`，源码 SHA256 `64b7cd93c9cf6dce79ba9645c9dae8e269838e0240a02840c3cce94ba685270d`。当前尚待用户赛事跑分，未提 PR。
+Vector、Scores、分派阈值、run_kernel ABI、GM 工作内存和图捕获所有权均保持原实现。候选 kernel SHA256：`41e78bd99e00d44a35420555c05a7638b56c05fd23c6ab3cedeae854d7526768`；基线为 `70c5d65`，源码 SHA256 `64b7cd93c9cf6dce79ba9645c9dae8e269838e0240a02840c3cce94ba685270d`。本文件保留该版本的定向设备实验；后续实际候选见 [长 K 检查点](long-k-performance.md)，不能将设备样本收益当作赛事提升。
 
 ## 本次验证
 
