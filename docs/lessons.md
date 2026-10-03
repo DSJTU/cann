@@ -40,7 +40,7 @@ Matmul 的输入类型 `MatmulType<POSITION, FORMAT, TYPE, ISTRANS>` 默认不�
 
 ## 核内与核间同步
 
-长 K Cube 的性能和精度需分别验证。此次 64×64 实验中，原生 full-K 在抵消和不同量级输入上失败；512-K 分段补偿也不能修复发生在单段内部的舍入损失。最终采用 128-K 分段、逐元素补偿跨段累加，完整 K 完成后才取 N 最大值。一次 `SetSingleShape` 的 N 可以盖住多个基本块（短 K 最多 1024 列，长 K 最多 256 列）；`singleM` 不超过 `baseM` 时，Iterate 按 N 从左到右交回每个基本块，尾块按实际列数紧密排列。补偿状态按基本块分开存放。CPU 模型按这个顺序模拟，并拒绝 `singleM` 大于 `baseM`。CPU Matmul 使用 FP64，即使通过也不能证明真实 Cube 精度。沿 M/N 分配独立任务能提高小 M、宽 N 的并行度；N 分区各写独立行最大值，再逐行合并 max 后求和 M，避免分配完整 B*M*N 得分矩阵。
+长 K Cube 的性能和精度需分别验证。64×64 实验中，原生 full-K 在抵消和不同量级输入上失败；512-K 分段补偿也不能修复发生在单段内部的舍入损失。Cube 累加长度保持 128。长 K 把一个 64×64 块的每个 128 面板打包成连续 ND 矩阵，用一次 `IterateBatch`（NORMAL、`BATCH_LARGE_THAN_L1`）算出全部面板，再逐元素补偿，之后才取该块的 N 最大值。短 K 仍是一次 `SetSingleShape` 最多 1024 列；`singleM` 不超过 `baseM` 时，Iterate 按 N 从左到右交回每个基本块，尾块按实际列数紧密排列。CPU 模型按打包后的面板和这个顺序模拟，并拒绝 `singleM` 大于 `baseM`。CPU Matmul 使用 FP64，即使通过也不能证明真实 Cube 精度或 IterateBatch 的设备布局。沿 M/N 分配独立任务能提高小 M、宽 N 的并行度；N 分区各写独立行最大值，再逐行合并 max 后求和 M，避免分配完整 B*M*N 得分矩阵。
 
 源码顺序不代表 Scalar、Vector、MTE2、MTE3 已完成。按生产者→消费者选 HardEvent，通过 TPipe 获取事件 ID，配对 SetFlag/WaitFlag；基线中的常见关系：
 

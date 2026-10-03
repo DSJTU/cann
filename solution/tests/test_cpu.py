@@ -102,8 +102,8 @@ def extended_cases():
             ((21, 2, 17, 32), 20),
         ):
             yield shape, dtype, ta, tb, cores, 'random'
-    # Multi-row long K. (1, 9, 17, 8192) has one row per core at 20 cores, so it
-    # never shares a B tile. These shapes do, including a full N tile plus a tail.
+    # Multi-row long K. (1, 9, 17, 8192) stays on Vector. (1, 32, 64, 8192) meets
+    # the long-K Cube gate and packs every K panel of its single 64-column tile.
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         for cores in (1, 20):
             for mode in ('k-cancellation', 'mixed-magnitude', 'close-max'):
@@ -151,11 +151,14 @@ def long_cube_cases():
     definitions = [((1, 65, 129, 8192), mode) for mode in
                    ('k-cancellation', 'mixed-magnitude', 'close-max', 'block-cancellation')]
     definitions += [((4, 65, 129, 256), 'random'), ((8, 33, 129, 392), 'random'),
-                    # One core owns eight N tiles, so the 256-column window runs twice.
+                    # One core owns every 64-column tile of this N, including the K compensation.
                     ((1, 64, 512, 256), 'k-cancellation'),
                     ((1, 64, 520, 256), 'negative'),
                     ((1, 65, 129, 1024), 'random'), ((1, 33, 129, 8192), 'random'),
-                    ((4, 65, 129, 392), 'negative')]
+                    ((4, 65, 129, 392), 'negative'),
+                    # (1, 16, 64, 4096) is the long-K Cube product edge, exactly 2^22.
+                    # (1, 16, 80, 392) stays on Vector; its product is below that edge.
+                    ((1, 16, 64, 4096), 'k-cancellation'), ((1, 16, 80, 392), 'negative')]
     for i, ((shape, mode), dtype, ta, tb) in enumerate(itertools.product(
             definitions, (1, 2), (False, True), (False, True))):
         yield shape, dtype, ta, tb, (1, 20)[i % 2], mode
@@ -236,7 +239,7 @@ def main():
         (temp / 'kernel_cpu.inc').write_text(cpu_source(source_path))
         executable = temp / 'sim_runner'
         subprocess.run([
-            'g++', '-std=c++14', '-O2', '-Wall', '-Wextra', '-Werror',
+            'g++', '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror',
             '-Wno-unused-parameter', '-ffp-contract=off',
             '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
             '-pthread',

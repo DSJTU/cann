@@ -110,7 +110,7 @@ struct Storage {
 }
 namespace AscendC {
 enum class TPosition { GM, VECIN, VECOUT, VECCALC };
-enum class HardEvent { V_S, S_V, MTE2_V, MTE2_S, S_MTE2, S_MTE3, V_MTE3 };
+enum class HardEvent { V_S, S_V, MTE2_V, MTE2_S, S_MTE2, S_MTE3, V_MTE3, MTE3_V, MTE2_MTE3, MTE3_MTE2, MTE3_S };
 enum class RoundMode { CAST_NONE };
 enum class ReduceOrder { ORDER_ONLY_VALUE };
 inline uint32_t GetBlockIdx() { return sim::block(); }
@@ -224,10 +224,17 @@ template <typename T> void DataCopyPad(LocalTensor<T> dst, GlobalTensor<T> src,
     }
 }
 template <typename T> void DataCopyPad(GlobalTensor<T> dst, LocalTensor<T> src, DataCopyExtParams p) {
-    if (p.blockCount != 1) throw std::runtime_error("CPU model only supports single-block copy");
     src.Aligned();
     src.DmaOperand();
-    for (uint32_t i = 0; i < p.blockLen / sizeof(T); ++i) dst.SetValue(i, src.GetValue(i));
+    const uint32_t count = p.blockLen / sizeof(T);
+    // UB source stride is extra 32-byte blocks after the aligned row.
+    // GM destination stride is the byte gap after blockLen.
+    const uint32_t srcPitch = ((count * sizeof(T) + 31) / 32) * (32 / sizeof(T)) +
+                              p.srcStride * (32 / sizeof(T));
+    const uint32_t dstPitch = (p.blockLen + p.dstStride) / sizeof(T);
+    for (uint32_t row = 0; row < p.blockCount; ++row)
+        for (uint32_t i = 0; i < count; ++i)
+            dst.SetValue(row * dstPitch + i, src.GetValue(row * srcPitch + i));
 }
 template <typename T> void Duplicate(LocalTensor<T> dst, T v, uint32_t n) {
     dst.Aligned();
