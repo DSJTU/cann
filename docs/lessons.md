@@ -40,7 +40,7 @@ Matmul 的输入类型 `MatmulType<POSITION, FORMAT, TYPE, ISTRANS>` 默认不�
 
 ## 核内与核间同步
 
-长 K Cube 的性能和精度需分别验证。64×64 实验中，原生 full-K 在抵消和不同量级输入上失败；512-K 分段补偿也不能修复发生在单段内部的舍入损失。Cube 累加长度保持 128。长 K 把一个 64×(64/128/256) 窗口的每个 128 面板打包成连续 ND 矩阵，用一次 `IterateBatch`（NORMAL、`BATCH_LARGE_THAN_L1`）算出全部面板，再按 64 列读回并逐元素补偿，之后才取该子块的 N 最大值。`MatmulConfig`、`GetNormalConfig`、`BatchMode`、`LayoutMode` 在目标头文件的全局命名空间；`matmul::` 只包 `Matmul` 和 `MatmulType`。短 K 仍是一次 `SetSingleShape` 最多 1024 列；`singleM` 不超过 `baseM` 时，Iterate 按 N 从左到右交回每个基本块，尾块按实际列数紧密排列。CPU 模型按打包后的面板和这个顺序模拟，并拒绝 `singleM` 大于 `baseM`。CPU Matmul 使用 FP64。此前面板批量和短 K 覆盖版本的赛事隐藏集有 15/15、错误占比 0% 的通过记录，逐点耗时不写入共用文档。这次通过不能代替当前宽窗口源码尚未做的赛事评测和设备回归，也不能证明隐藏集以外的 Cube 舍入或 IterateBatch 的内部布局。本分支仍在开发。沿 M/N 分配独立任务能提高小 M、宽 N 的并行度；N 分区各写独立行最大值，再逐行合并 max 后求和 M，避免分配完整 B*M*N 得分矩阵。
+长 K Cube 的性能和精度需分别验证。64×64 实验中，原生 full-K 在抵消和不同量级输入上失败；512-K 分段补偿也不能修复发生在单段内部的舍入损失。Cube 累加长度保持 128。长 K 把一个 64×(64/128/256) 窗口的每个 128 面板打包成连续 ND 矩阵，用一次 `IterateBatch`（NORMAL、`BATCH_LARGE_THAN_L1`）算出全部面板，再按 64 列读回并逐元素补偿，之后才取该子块的 N 最大值。`MatmulConfig`、`GetNormalConfig`、`BatchMode`、`LayoutMode` 在目标头文件的全局命名空间；`matmul::` 只包 `Matmul` 和 `MatmulType`。短 K 仍是一次 `SetSingleShape` 最多 1024 列；`singleM` 不超过 `baseM` 时，Iterate 按 N 从左到右交回每个基本块，尾块按实际列数紧密排列。CPU 模型按打包后的面板和这个顺序模拟，并拒绝 `singleM` 大于 `baseM`。CPU Matmul 使用 FP64。此前面板批量和短 K 覆盖版本的赛事隐藏集有 15/15、错误占比 0% 的通过记录，逐点耗时不写入共用文档。此前版本的通过不能证明当前宽窗口的设备实现、精度或隐藏集结果；实际检查状态保存在本地 `.private`。本分支仍在开发。沿 M/N 分配独立任务能提高小 M、宽 N 的并行度；N 分区各写独立行最大值，再逐行合并 max 后求和 M，避免分配完整 B*M*N 得分矩阵。
 
 宽窗口的 `IterateBatch` 不能沿用单基本块的输出布局假设。GM 输出设置 `enSequentialWrite=false`，让每个基本块落在完整 `singleCoreM × singleCoreN` 矩阵内对应的位置；读回 64 列子块时，GM 行间隙为 `(singleCoreN-64)*sizeof(float)`。`matrixStrideC` 是保留参数，保持默认 0；NORMAL 的面板矩阵大小由 tiling 定义。接口依据见 [CANN 9.0 IterateBatch](https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0642.html)。CPU 模型验证该 ND 寻址，不能证明设备端实现与舍入行为。
 
@@ -78,6 +78,7 @@ Matmul 的 `GetTensorC<true>` 并不替代消费者到 Scalar 的完成依赖。
 | 检查 | 能证明的范围 |
 | --- | --- |
 | CPU 模型 + ASan/UBSan | 控制流、索引、边界、初始化、模型下数值与确定性 |
+| 官方 CPU Twin | 同一计算体在 tikicpulib 中执行，可用 GDB 调试 AIV/MIX；仍需单独验证实际 NPU 调度、图捕获和舍入 |
 | Clang 地址空间检查 | Host 代码的部分类型约束 |
 | 目标 ASC 编译/链接 | SDK、launch 生成与符号兼容 |
 | 官方 camodel | 仿真的设备指令与执行路径，不能代替真机性能 |

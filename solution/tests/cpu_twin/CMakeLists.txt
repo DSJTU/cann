@@ -1,0 +1,17 @@
+cmake_minimum_required(VERSION 3.16)
+project(bmmms_cpu_twin LANGUAGES CXX)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+if(NOT DEFINED CANN_ROOT)
+    set(CANN_ROOT "$ENV{ASCEND_HOME_PATH}")
+endif()
+find_package(tikicpulib REQUIRED CONFIG PATHS "${CANN_ROOT}/tools/tikicpulib/lib/cmake" NO_DEFAULT_PATH)
+set(KERNEL_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/../../kernel.asc")
+set(KERNEL_ADAPTED "${CMAKE_CURRENT_BINARY_DIR}/kernel_twin.inc")
+add_custom_command(OUTPUT "${KERNEL_ADAPTED}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/prepare.py" "${KERNEL_SOURCE}" "${KERNEL_ADAPTED}"
+    DEPENDS "${KERNEL_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/prepare.py" VERBATIM)
+add_executable(bmmms_cpu_twin runner.cpp "${KERNEL_ADAPTED}")
+target_include_directories(bmmms_cpu_twin PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_options(bmmms_cpu_twin PRIVATE -g -O0 -fno-omit-frame-pointer)
+target_link_directories(bmmms_cpu_twin PRIVATE "${CANN_ROOT}/lib64")
+target_link_libraries(bmmms_cpu_twin PRIVATE tikicpulib::Ascend910_9362 tiling_api register platform unified_dlog graph_base dl m)

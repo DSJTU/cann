@@ -1,6 +1,6 @@
 # BatchMatmulMaxSum
 
-提交复制 [kernel.asc](kernel.asc) 全部内容，保留模板 run_kernel ABI；数值计算全部在 NPU。本分支仍在开发。当前扩大长 K 批量列窗口的源码尚未赛事评测或设备回归，不能继承此前短 K 覆盖版本的赛事通过或 `main` 上 `54cc8bd` 的确认提升。逐点耗时只记在本地 `.private`。接口约束见 [Ascend C 开发要点](../docs/lessons.md)，更早的 Vector 与短 K 记录见 [文档索引](../docs/README.md)。
+提交复制 [kernel.asc](kernel.asc) 全部内容，保留模板 run_kernel ABI；数值计算全部在 NPU。本分支仍在开发，当前源码不能继承此前短 K 覆盖版本的赛事通过或 `main` 上 `54cc8bd` 的确认提升。设备检查与赛事状态只记在本地 `.private`。接口约束见 [Ascend C 开发要点](../docs/lessons.md)，更早的 Vector 与短 K 记录见 [文档索引](../docs/README.md)。
 
 K≤128、M≥16、N≥64、B*M*N*K≥2^20 时使用短 K Cube。基本块仍是 32×64；一次请求最多覆盖 1024 列，Iterate 按 N 交回每个基本块并立刻归约。batch/M 任务不足时再沿 N 分区，让更多核计算独立区间。同一个 MIX kernel 的 AIV 在全核汇合后先逐行合并 N 分区最大值，再以固定高/低分量补偿树求和 M。每层用 TwoSum 保留加法舍入误差，再合并低分量并规格化；奇数节点补零。自有 UB 按 M 分配，最大 176 KiB + 32 字节。除系统工作内存外只分配 B*M*nGroups 个 FP32 行最大值；普通调用同步释放，图捕获在模型销毁时释放，同图多次调用使用独立缓冲。
 
@@ -19,6 +19,8 @@ python3 solution/tests/test_cpu.py
 默认 1008 组：280 组正确性、184 组长 K 与分区、136 组分块边界、192 组短 K Cube 分派与 N 分区边界，以及 216 组长 K Cube 分派与列窗口边界用例。短 K 覆盖 1024 列窗口、分区余数、不同 N 分区获胜、M/N 尾部、batch 总工作量门槛，以及门槛以下的 Vector 回退；新增集合在两类型、四布局、1/20 核下分别运行。长 K 覆盖一次批量请求内的多个 128 面板、512-K 分段内部抵消，以及 M=16、N=64 的分派边界；新增 112 组覆盖 64/128/256 列请求、跨行距读回、窗口/K/M/N 尾部、1/20 核和宽窗口内的 K=8192 抵消。覆盖输入不变、输出保护区与确定性，逐次断言恰好一个 launch，启用 ASan/UBSan。用 `--suite correctness`、`--suite extended`、`--suite performance`、`--suite short-cube` 或 `--suite long-cube` 可分开运行。CPU Matmul 使用 FP64 点积，只验证分区、索引、打包与归约控制流，不模拟 Cube 硬件舍入、流水线或图捕获。类型模型与 CPU 模型不能代替目标 SDK 编译和真机验证。
 
 Finish 的独立数值检查为 `python3 solution/tests/test_finish.py`（仓库根运行），756 组 / 6,300 个输出对照 `math.fsum`，覆盖 1/2/7 个 N 分区、M 尾部、多 batch 复用、全负、抵消和不同量级。`--suite cube-finish` 可用于 CPU runner 或 NPU 数据生成器，提供 24 个实际进入短 K Cube 的大 M 定向用例；它单独运行，不计入默认 1008 组。
+
+官方 CPU Twin 的独立本机入口见 [tests/cpu_twin](tests/cpu_twin/README.md)。已有本地 CANN SDK 环境时可运行 `bash solution/tests/cpu_twin/run.sh --suite all`（仓库根），或加 `--suite long-cube --case 8 --gdb` 单步调试原始 kernel 源码。它使用官方 CPU 库，独立于上面的自写模型；CPU 计算检查不能替代真实 NPU 的调度、图捕获、启动数量和性能验证。
 
 赛题日常迭代做相关本地检查并正常提交；关键检查点先做最小必要设备回归，再由用户跑分。确认提升后才提 PR。下方完整回归工具按需使用。
 
