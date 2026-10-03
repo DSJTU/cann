@@ -124,6 +124,9 @@ def performance_cases():
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (1, 257, 513, 128), dtype, ta, tb, 20, 'random'
         yield (1, 1649, 257, 40), dtype, ta, tb, 20, 'negative'
+        # Two short-K windows: N crosses 1024, including a short tail window.
+        yield (1, 256, 2048, 32), dtype, ta, tb, 20, 'random'
+        yield (1, 256, 1031, 64), dtype, ta, tb, 1, 'negative'
     # Short-K A cache holds at most 128 rows. 129 rows must reload A per N tile.
     # N=65 crosses both the 32-column and 64-column tile widths.
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
@@ -148,6 +151,9 @@ def long_cube_cases():
     definitions = [((1, 65, 129, 8192), mode) for mode in
                    ('k-cancellation', 'mixed-magnitude', 'close-max', 'block-cancellation')]
     definitions += [((4, 65, 129, 256), 'random'), ((8, 33, 129, 392), 'random'),
+                    # One core owns eight N tiles, so the 256-column window runs twice.
+                    ((1, 64, 512, 256), 'k-cancellation'),
+                    ((1, 64, 520, 256), 'negative'),
                     ((1, 65, 129, 1024), 'random'), ((1, 33, 129, 8192), 'random'),
                     ((4, 65, 129, 392), 'negative')]
     for i, ((shape, mode), dtype, ta, tb) in enumerate(itertools.product(
@@ -266,6 +272,8 @@ def main():
         result = subprocess.run([str(executable)], input=payload, capture_output=True, env=env)
         if result.returncode:
             raise RuntimeError(result.stderr.decode(errors='replace'))
+        if os.environ.get('BMMMS_REQUEST_LOG'):
+            print(result.stderr.decode(errors='replace'), end='')
         values = np.frombuffer(result.stdout, dtype=np.float32)
         assert len(values) == sum(s[0][0] for s in specs)
         offset = 0

@@ -1,6 +1,7 @@
 // Synchronous mathematical model for layout, packing and bounds checks.
 // FP64 dot products do not model Cube precision, pipelines or graph lifetime.
 #pragma once
+#include <atomic>
 #include <cstdlib>
 #define __kfc_workspace__
 using aclError = int;
@@ -24,6 +25,10 @@ inline aclError aclmdlRICaptureGetInfo(aclrtStream, aclmdlRICaptureStatus* statu
 }
 inline aclError aclmdlRIDestroyRegisterCallback(aclmdlRI, aclrtCallback, void*) {
     throw std::runtime_error("graph ownership is not modeled by the CPU test");
+}
+namespace bmmms_sim {
+inline std::atomic<uint64_t> &MatmulRequests() { static std::atomic<uint64_t> value{0}; return value; }
+inline std::atomic<uint64_t> &MatmulTiles() { static std::atomic<uint64_t> value{0}; return value; }
 }
 enum class CubeFormat { ND };
 namespace AscendC { namespace tiling {
@@ -68,17 +73,21 @@ template <typename A, typename B, typename C, typename Bias>
 class Matmul {
     AscendC::GlobalTensor<typename A::T> a;
     AscendC::GlobalTensor<typename B::T> b;
-    uint32_t orgM=0, orgN=0, orgK=0, m=0, n=0, k=0, baseM=0, baseN=0;
-    bool ta=false, tb=false, done=true;
+    uint32_t orgM=0, orgN=0, orgK=0, m=0, n=0, k=0, baseM=0, baseN=0, tile=0;
+    bool ta=false, tb=false, done=true, pending=false;
 public:
     void Init(const AscendC::tiling::TCubeTiling* t) {
         orgM=t->orgM; orgN=t->orgN; orgK=t->orgK; baseM=t->baseM; baseN=t->baseN;
     }
     void SetOrgShape(uint32_t om, uint32_t on, uint32_t ok) { orgM=om; orgN=on; orgK=ok; }
+    // singleM stays within one base row tile. singleN may cover several base
+    // column tiles; Iterate yields them from N=0 toward the tail.
     void SetSingleShape(uint32_t sm, uint32_t sn, uint32_t sk) {
-        if (!sm || !sn || !sk || sm>baseM || sn>baseN || sk>orgK)
-            throw std::runtime_error("CPU Matmul only models one valid tile per request");
-        m=sm; n=sn; k=sk; done=false;
+        if (pending || !done) throw std::runtime_error("Matmul request is still open");
+        if (!sm || !sn || !sk || !baseM || !baseN || sm>baseM || sk>orgK)
+            throw std::runtime_error("CPU Matmul single shape exceeds one M tile or full K");
+        m=sm; n=sn; k=sk; tile=0; pending=false; done=false;
+        bmmms_sim::MatmulRequests().fetch_add(1, std::memory_order_relaxed);
     }
     void SetTensorA(AscendC::GlobalTensor<typename A::T> input, bool trans) {
         if (trans && !A::isTrans) throw std::runtime_error("MatmulType must enable A transpose");
@@ -88,21 +97,32 @@ public:
         if (trans && !B::isTrans) throw std::runtime_error("MatmulType must enable B transpose");
         b=input; tb=trans;
     }
-    template <bool sync=true> bool Iterate() const { return !done; }
+    template <bool sync=true> bool Iterate() {
+        if (pending) throw std::runtime_error("Iterate before consuming the current tile");
+        if (tile * baseN >= n) { done=true; return false; }
+        pending=true;
+        return true;
+    }
     template <bool sync=true> void GetTensorC(AscendC::LocalTensor<typename C::T> output, int atomic, bool sequential) {
-        if (done || atomic || !sequential) throw std::runtime_error("unexpected CPU Matmul output mode");
-        for (uint32_t row=0;row<m;++row) for (uint32_t col=0;col<n;++col) {
+        if (!pending || atomic || !sequential) throw std::runtime_error("unexpected CPU Matmul output mode");
+        const uint32_t col0 = tile * baseN;
+        const uint32_t tileCols = n - col0 < baseN ? n - col0 : baseN;
+        for (uint32_t row=0;row<m;++row) for (uint32_t col=0;col<tileCols;++col) {
             double value=0;
+            const uint32_t globalCol = col0 + col;
             for (uint32_t kk=0;kk<k;++kk) {
                 const auto av=a.GetValue(ta ? kk*orgM+row : row*orgK+kk);
-                const auto bv=b.GetValue(tb ? col*orgK+kk : kk*orgN+col);
+                const auto bv=b.GetValue(tb ? globalCol*orgK+kk : kk*orgN+globalCol);
                 value+=double(float(av))*double(float(bv));
             }
-            output.SetValue(row*n+col,typename C::T(value));
+            output.SetValue(row*tileCols+col,typename C::T(value));
         }
-        done=true;
+        bmmms_sim::MatmulTiles().fetch_add(1, std::memory_order_relaxed);
+        ++tile;
+        pending=false;
+        if (tile * baseN >= n) done=true;
     }
-    void End() const { if (!done) throw std::runtime_error("Matmul result was not consumed"); }
+    void End() const { if (pending || !done) throw std::runtime_error("Matmul result was not consumed"); }
 };
 }
 #define REGIST_MATMUL_OBJ(pipe, workspace, object, tiling) object.Init(tiling)
