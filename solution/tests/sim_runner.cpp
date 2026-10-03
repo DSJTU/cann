@@ -29,8 +29,11 @@ int main() {
             TensorInfo ai = {as, 3, int32_t(dtype)}, bi = {bs, 3, int32_t(dtype)}, yi = {ys, 1, 0};
             TensorGroupInfo ag = {&ai, 1}, bg = {&bi, 1}, yg = {&yi, 1};
             const auto invoke = [&] {
+                const auto launches = sim::launchCount();
                 run_kernel(reinterpret_cast<uint8_t*>(a.data()), ag, reinterpret_cast<uint8_t*>(b.data()), bg,
                            reinterpret_cast<uint8_t*>(y.data()), yg, cores, stream, ta, tb);
+                if (sim::launchCount() - launches != 1)
+                    throw std::runtime_error("each invocation must launch exactly one kernel");
             };
             invoke();
             const auto first = y;

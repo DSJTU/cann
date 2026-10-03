@@ -18,6 +18,7 @@
 #define __mix__(a, b)
 #define __schedmode__(mode)
 #define __gm__
+#define ASCEND_IS_AIV (true)
 using half = _Float16;
 struct bfloat16_t {
     uint16_t bits;
@@ -43,6 +44,7 @@ namespace sim {
 inline uint32_t& logicalBlocks() { static thread_local uint32_t v = 0; return v; }
 inline uint32_t& block() { static thread_local uint32_t v = 0; return v; }
 inline uint32_t& blocks() { static uint32_t v = 1; return v; }
+inline uint32_t& launchCount() { static uint32_t v = 0; return v; }
 class Collective {
     std::mutex mutex;
     std::condition_variable changed;
@@ -75,6 +77,7 @@ public:
 };
 inline Collective*& activeCollective() { static Collective* p = nullptr; return p; }
 template <typename F> void Launch(uint32_t n, F f) {
+    ++launchCount();
     blocks() = n;
     Collective collective(n);
     activeCollective() = &collective;
@@ -113,7 +116,7 @@ enum class ReduceOrder { ORDER_ONLY_VALUE };
 inline uint32_t GetBlockIdx() { return sim::block(); }
 inline uint32_t GetBlockNum() { return sim::logicalBlocks() ? sim::logicalBlocks() : sim::blocks(); }
 template <bool isAIVOnly = true> inline void SyncAll() {
-    static_assert(isAIVOnly, "only pure Vector collectives are modeled");
+    static_assert(isAIVOnly, "only AIV collectives are modeled");
     if (!sim::activeCollective()) throw std::runtime_error("no collective launch");
     sim::activeCollective()->Wait();
 }

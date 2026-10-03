@@ -1,5 +1,7 @@
 # 2026-10-02 性能优化
 
+历史记录：本页描述当时的实现和验证范围；当前版本见 [单次启动检查点](../single-kernel.md)。
+
 已将通过真机验证的 Vector 优化整合到 `solution/kernel.asc`。相对正确性基线 `d67572d`，48 组代表用例的逐例 kernel 耗时比值中位数为 0.6637，24 组大型短 K 用例为 0.2607；本轮各组均更快。该优化内核随后通过赛事评测 15/15，截图显示错误占比为 0%；逐项赛事耗时、版本哈希与全部数值报告见 [performance-data.json](performance-data.json)。正确性基线的赛事成绩仍单独记录于 [验证记录](validation.md)。
 
 ## 性能优化版本赛事结果
@@ -83,7 +85,7 @@ ARM64、CANN 9.0、ASC `dav-2201`，A3 SoC `Ascend910_9362`、20 个可用 Cube 
 
 当前版本所有已测数值报告的最坏误差/容差不超过 0.00373936。runner 同时核验输入不变、输出保护区及重复确定性。未对当前版本重跑官方 camodel，未执行完整 48 组 stress，也未穷举尺寸空间。
 
-复现使用 [构建与验证说明](../solution/README.md)。分别用 `npu_data.py --suite benchmark` 和 `--suite large-short-k` 生成数据，在相同设备分别运行基线与当前代码的 `--benchmark` 和 msprof，再用 `summarize_benchmark.py` 比较。每轮使用独立采集目录，输出都需通过 `npu_data.py --verify`。
+复现使用 [构建与验证说明](../../solution/README.md)。分别用 `npu_data.py --suite benchmark` 和 `--suite large-short-k` 生成数据，在相同设备分别运行基线与当前代码的 `--benchmark` 和 msprof，再用 `summarize_benchmark.py` 比较。每轮使用独立采集目录，输出都需通过 `npu_data.py --verify`。
 
 ## 下一步：Cube 分块与融合归约
 

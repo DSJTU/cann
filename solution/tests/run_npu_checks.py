@@ -13,6 +13,12 @@ import re
 import subprocess
 
 
+def uses_cube(shape):
+    batch, m, n, k = shape
+    return ((k <= 128 and m >= 256 and n >= 256 and m * n * k >= 1 << 24) or
+            (k > 128 and m >= 32 and n >= 128 and batch * m * n * k >= 1 << 23))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--build', type=Path, default=Path('build-npu'))
@@ -56,11 +62,10 @@ def main():
                 raise RuntimeError(name+' needs BMMMS_TRACE_RUNTIME=ON')
             allocated, freed, error = map(int,summaries[0])
             metadata = json.loads(prefix.with_suffix('.json').read_text())
-            cubes = sum(1 for v in metadata if v['shape'][3] <= 128 and
-                        v['shape'][1] >= 256 and v['shape'][2] >= 256 and
-                        v['shape'][1]*v['shape'][2]*v['shape'][3] >= 1 << 24)
+            cubes = sum(uses_cube(v['shape']) for v in metadata)
             calls = {'--capture-cold': 1, '--capture-chain': 4,
-                     '--capture-streams': 2, '--streams': 4, '--benchmark': 12}.get(mode, 2)
+                     '--capture-streams': 2, '--streams': 4, '--benchmark': 12,
+                     '--profile-five': 5}.get(mode, 2)
             registrations = len(re.findall(r'^INTERNAL_REGISTER ret=0$',log,re.M))
             syncs = len(re.findall(r'^INTERNAL_SYNC ret=0$',log,re.M))
             expected_registers = cubes*(2 if mode == '--capture-streams' else 1) if mode and mode.startswith('--capture') else 0
@@ -79,7 +84,7 @@ def main():
         save()
 
     try:
-        for suite in ('correctness','extended','performance'):
+        for suite in ('correctness','extended','performance','long-cube'):
             prefix = data/suite
             run('generate-'+suite,['python3',root/'tests/npu_data.py','--suite',suite,'--prefix',prefix])
             for mode in (None,'--capture-cold','--capture-chain','--capture-streams'):
@@ -92,6 +97,21 @@ def main():
                 check('large-'+(mode or 'ordinary').removeprefix('--'),prefix,mode)
             check('large-cold-shared',prefix,'--capture-cold',True)
             check('large-benchmark',prefix,'--benchmark')
+        # Numerical checks do not prove the contest's exactly-one-launch rule.
+        prefix = data/'launch-rule'
+        run('generate-launch-rule',['python3',root/'tests/npu_data.py','--suite','launch-rule','--prefix',prefix])
+        output = data/'launch-rule.out.bin'
+        directory = runs/'launch-rule-profile'
+        application = ' '.join(map(str,[build/'bmmms_npu_runner',prefix.with_suffix('.bin'),output,'--profile-five']))
+        run('launch-rule-profile',['timeout','600','msprof','--output='+str(directory),'--application='+application])
+        run('launch-rule-verify',['python3',root/'tests/npu_data.py','--prefix',prefix,'--verify',output])
+        from check_launch_profile import verify as verify_launches
+        files = list(directory.rglob('op_summary*.csv'))
+        if len(files) != 1:
+            raise RuntimeError('ambiguous or missing launch profile')
+        metadata = json.loads(prefix.with_suffix('.json').read_text())
+        rows = verify_launches(files[0],metadata,5)
+        result['launch_rule'] = dict(expected=len(metadata)*5,observed=len(rows),passed=True)
         result['workflow_passed'] = True
         save();print('HYBRID_NPU_CHECKS_PASS',flush=True)
     except Exception as error:

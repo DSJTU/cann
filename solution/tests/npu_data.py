@@ -7,10 +7,22 @@ from pathlib import Path
 import struct
 
 import numpy as np
-from test_cpu import cases, extended_cases, performance_cases, make_inputs, quantize
+from test_cpu import cases, extended_cases, performance_cases, cube_finish_cases, long_cube_cases, make_inputs, quantize
 
 
 def specs(suite):
+    if suite == 'launch-rule':
+        # Six Cube and nine Vector inputs: a two-launch Cube path produces
+        # 105 records over five iterations, instead of the required 75.
+        # These are our diagnostic inputs, not the unknown contest shapes.
+        shapes = [(1, 65, 129, 1024), (4, 65, 129, 256), (1, 33, 129, 8192),
+                  (1, 256, 512, 128), (1, 513, 257, 128), (1, 1649, 257, 40),
+                  (1, 1, 1, 32), (2, 17, 19, 40), (1, 33, 129, 64),
+                  (1, 65, 257, 40), (2, 127, 63, 32), (3, 31, 17, 256),
+                  (1, 129, 1, 40), (64, 3, 2, 32), (1, 9, 17, 8192)]
+        for i, shape in enumerate(shapes):
+            yield shape, 1 + i % 2, bool(i % 2), bool(i % 3), 0, 'random'
+        return
     if suite == 'smoke':
         for dtype, ta, tb, cores in itertools.product((1, 2), (False, True), (False, True), (1, 0)):
             for shape in ((1, 1, 1, 32), (2, 17, 19, 40)):
@@ -24,6 +36,12 @@ def specs(suite):
         return
     if suite == 'performance':
         yield from performance_cases()
+        return
+    if suite == 'cube-finish':
+        yield from cube_finish_cases()
+        return
+    if suite == 'long-cube':
+        yield from long_cube_cases()
         return
     if suite == 'precision':
         for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
@@ -105,7 +123,7 @@ def verify(prefix, output):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', choices=('smoke', 'correctness', 'extended', 'performance', 'precision', 'benchmark', 'large-short-k', 'stress'), default='smoke')
+    parser.add_argument('--suite', choices=('smoke', 'correctness', 'extended', 'performance', 'cube-finish', 'long-cube', 'launch-rule', 'precision', 'benchmark', 'large-short-k', 'stress'), default='smoke')
     parser.add_argument('--prefix', required=True)
     parser.add_argument('--verify', help='verify device output instead of generating inputs')
     args = parser.parse_args()

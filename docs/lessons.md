@@ -40,6 +40,8 @@ Matmul 的输入类型 `MatmulType<POSITION, FORMAT, TYPE, ISTRANS>` 默认不�
 
 ## 核内与核间同步
 
+长 K Cube 的性能和精度需分别验证。此次 64×64 实验中，原生 full-K 在抵消和不同量级输入上失败；512-K 分段补偿也不能修复发生在单段内部的舍入损失。最终采用 128-K 分段、逐元素补偿跨段累加，完整 K 完成后才取 N 最大值。CPU Matmul 使用 FP64，即使通过也不能证明真实 Cube 精度。沿 M/N 分配独立任务能提高小 M、宽 N 的并行度；N 分区各写独立行最大值，再逐行合并 max 后求和 M，避免分配完整 B*M*N 得分矩阵。具体反例、验证范围和实际性能见 [长 K 检查点](history/long-k-performance.md)。
+
 源码顺序不代表 Scalar、Vector、MTE2、MTE3 已完成。按生产者→消费者选 HardEvent，通过 TPipe 获取事件 ID，配对 SetFlag/WaitFlag；基线中的常见关系：
 
 | 依赖 | 事件 |
@@ -68,6 +70,8 @@ Matmul 的 `GetTensorC<true>` 并不替代消费者到 Scalar 的完成依赖。
 只检查调用方最后的 stream sync 会漏掉 Host 内部被忽略的错误。动态库能 dlopen 不代表 ABI 实际调用有效，需由独立 C++ 调用方执行数值用例。
 
 ## 验证阶梯与诊断
+
+赛事每次迭代必须恰好启动一个 kernel。两阶段 Cube→Vector 即使精度、捕获和资源生命周期检查通过，仍会被 profiling 规则拒绝。每次关键检查点需核对真实设备 launch 数量；不能仅把两次 kernel 时间相加当作符合提交约束。融合 MIX 核中，计算阶段结束后每个 AIV（含无任务 worker）都恰好执行一次 SyncAll，再读取独立行最大值。使用 batch 调度防止多 stream 交叠造成全核汇合死锁，且归约 worker 步长为两倍逻辑 block 数。计算与最终归约的 TPipe 分阶段销毁/初始化以复用 UB，仍需真实 SDK 和设备验证。
 
 | 检查 | 能证明的范围 |
 | --- | --- |

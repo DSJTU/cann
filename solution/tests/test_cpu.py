@@ -33,13 +33,9 @@ def cpu_source(source_path):
     source, count = launch.subn(r'sim::Launch(\2, [&] { \1(\3); });', source)
     assert count == 8, f'unexpected launch count: {count}'
     source, count = re.subn(
-        r'(Scores<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
+        r'(Fused<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
         r'sim::LaunchMixed(\2, [&] { \1(\3); });', source)
     assert count == 2, f'unexpected Cube launch count: {count}'
-    source, count = re.subn(
-        r'(Finish)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
-        r'sim::Launch(\2, [&] { \1(\3); });', source)
-    assert count == 1, f'unexpected Finish launch count: {count}'
     assert '<<<' not in source
     return '#include "sim_matmul.h"\n' + source
 
@@ -138,11 +134,45 @@ def performance_cases():
         yield (1, 64, 257, 128), dtype, ta, tb, 20, 'close-max'
 
 
+def cube_finish_cases():
+    """Exercise the actual Cube dispatch and large-M compensated reduction."""
+    for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
+        yield (1, 1649, 257, 40), dtype, ta, tb, 20, 'm-cancellation'
+        yield (1, 8191, 257, 40), dtype, ta, tb, 20, 'm-magnitude'
+        # One core reuses Finish's UB across batches, with different row values.
+        yield (3, 8192, 257, 40), dtype, ta, tb, 1, 'm-cancellation'
+
+
+def long_cube_cases():
+    """Cross production long-K dispatch: K/M/N tails, reuse, compensation."""
+    definitions = [((1, 65, 129, 8192), mode) for mode in
+                   ('k-cancellation', 'mixed-magnitude', 'close-max', 'block-cancellation')]
+    definitions += [((4, 65, 129, 256), 'random'), ((8, 33, 129, 392), 'random'),
+                    ((1, 65, 129, 1024), 'random'), ((1, 33, 129, 8192), 'random'),
+                    ((4, 65, 129, 392), 'negative')]
+    for i, ((shape, mode), dtype, ta, tb) in enumerate(itertools.product(
+            definitions, (1, 2), (False, True), (False, True))):
+        yield shape, dtype, ta, tb, (1, 20)[i % 2], mode
+
+
 def make_inputs(shape, mode, rng):
     batch, m, n, k = shape
     a = rng.uniform(-1, 1, (batch, m, k))
     b = rng.uniform(-1, 1, (batch, k, n))
-    if mode == 'negative':
+    if mode in ('m-cancellation', 'm-magnitude'):
+        a.fill(0)
+        b.fill(0)
+        b[:, 0, :] = 1
+        for bi in range(batch):
+            values = a[bi, :, 0]
+            if mode == 'm-cancellation':
+                half = (m - 1) // 2
+                values[:half] = 1 + bi
+                values[half:2 * half] = -(1 + bi)
+                values[-1] = (bi + 1) * 2 ** -10
+            else:
+                values[:] = np.ldexp(rng.uniform(-1, 1, m), rng.integers(-12, 12, m))
+    elif mode == 'negative':
         a = np.abs(a) + .1
         b = -(np.abs(b) + .1)
     elif mode == 'zero':
@@ -174,6 +204,13 @@ def make_inputs(shape, mode, rng):
         b[:, :quarter, :] = large
         b[:, quarter:2 * quarter, :] = small
         b[:, 2 * quarter:3 * quarter, :] = -large
+    elif mode == 'block-cancellation':
+        a.fill(1)
+        b.fill(0)
+        for start in range(0, k, 512):
+            b[:, start:start + 128, :] = 4096
+            b[:, start + 128:start + 256, :] = 2 ** -10
+            b[:, start + 256:start + 384, :] = -4096
     elif mode == 'close-max':
         a.fill(1)
         b.fill(0)
@@ -184,7 +221,7 @@ def make_inputs(shape, mode, rng):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', choices=('all', 'correctness', 'extended', 'performance'), default='all')
+    parser.add_argument('--suite', choices=('all', 'correctness', 'extended', 'performance', 'cube-finish', 'long-cube'), default='all')
     args = parser.parse_args()
     source_path = ROOT / 'kernel.asc'
     check_host_types()
@@ -205,6 +242,10 @@ def main():
             specs.extend(extended_cases())
         if args.suite in ('all', 'performance'):
             specs.extend(performance_cases())
+        if args.suite == 'cube-finish':
+            specs.extend(cube_finish_cases())
+        if args.suite in ('all', 'long-cube'):
+            specs.extend(long_cube_cases())
         payload = bytearray(struct.pack('<I', len(specs)))
         expected = []
         rng = np.random.default_rng(20261002)
@@ -241,6 +282,7 @@ def main():
         print(f'PASS: {len(specs)} CPU cases, FP16/BF16, all four storage layouts')
         print('PASS: threaded collective execution')
         print('PASS: repeatability, input immutability, output guards')
+        print('PASS: exactly one simulated kernel launch per invocation in every case')
         print('PASS: AddressSanitizer/UBSan, local initialization/alignment/DMA-position checks')
         print(f'Worst absolute error: {worst_error:.8g}; max error/tolerance: {worst_scaled:.6g}')
         print('CPU model does not validate graph capture, NPU synchronization, performance or the webpage judge.')

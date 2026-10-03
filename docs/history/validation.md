@@ -72,7 +72,7 @@ ACL 流事件的整体比值为精度修复/原基线 1.0164、最终/精度修�
 python3 solution/tests/test_cpu.py
 ```
 
-设备构建、输入生成和输出验证见 [solution/README.md](../solution/README.md)。`npu_data.py` 的 `correctness`、`extended`、`precision`、`benchmark` 分别生成上述集合；runner 支持 `--capture-cold`、`--capture-chain`、`--streams`、`--benchmark`，共享库由 `BMMMS_BUILD_SHARED_TEST=ON` 构建。
+设备构建、输入生成和输出验证见 [solution/README.md](../../solution/README.md)。`npu_data.py` 的 `correctness`、`extended`、`precision`、`benchmark` 分别生成上述集合；runner 支持 `--capture-cold`、`--capture-chain`、`--streams`、`--benchmark`，共享库由 `BMMMS_BUILD_SHARED_TEST=ON` 构建。
 
 性能采集示例（在 solution 目录，SDK 环境已加载）：
 
