@@ -1,6 +1,6 @@
 # BatchMatmulMaxSum
 
-提交复制 [kernel.asc](kernel.asc) 全部内容，保留模板 run_kernel ABI；数值计算全部在 NPU。当前 `54cc8bd` 已完成设备验收和赛事 15/15 验证，用户确认提升，见 [单次启动检查点](../docs/single-kernel.md)。此前验证和设计实验统一收录在 [文档索引](../docs/README.md) 与 [实验索引](experiments/README.md)。
+提交复制 [kernel.asc](kernel.asc) 全部内容，保留模板 run_kernel ABI；数值计算全部在 NPU。`54cc8bd` 已完成设备验收和赛事 15/15 验证，用户确认提升。接口约束见 [Ascend C 开发要点](../docs/lessons.md)，更早的 Vector 与短 K 记录见 [文档索引](../docs/README.md)。
 
 K≤128、M/N≥256、M*N*K≥2^24 时使用 Cube 的 32×64 得分块并立即沿 N 归约；同一个 MIX kernel 的 AIV 在全核汇合后搬入每个 batch 的行最大值，以固定高/低分量补偿树求和。每层用 TwoSum 保留加法舍入误差，再合并低分量并规格化；奇数节点补零。自有 UB 按 M 分配，最大 176 KiB + 32 字节。除系统工作内存外只分配 B*M 个 FP32 行最大值；普通调用同步释放，图捕获在模型销毁时释放，同图多次调用使用独立缓冲。
 

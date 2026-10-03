@@ -4,7 +4,7 @@ Ascend C 实现，支持 FP16/BF16 输入、四种存储布局和 FP32 输出。
 
 - [算子契约](cann_problem.md)
 - [构建与验证](solution/README.md)
-- [当前检查点与历史记录](docs/README.md)
+- [历史记录](docs/README.md)
 - [Ascend C 开发要点](docs/lessons.md)
 - [实验目录说明](solution/experiments/README.md)
 
