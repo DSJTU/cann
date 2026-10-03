@@ -20,16 +20,24 @@ def records(path):
     return sorted(rows, key=lambda row: float(row['Task Start Time(us)']))
 
 
+def host_buffers(shape):
+    """Match run_kernel. Short Cube allocates workspace and row maxima.
+    Long Cube also allocates the packed-panel scratch."""
+    batch, m, n, k = shape
+    if k <= 128 and m >= 256 and n >= 256 and m * n * k >= 1 << 24:
+        return 2
+    if k > 128 and m >= 16 and n >= 64 and batch * m * n * k >= 1 << 22:
+        return 3
+    return 0
+
+
 def verify(path, metadata, repeats):
     rows = records(path)
     expected = len(metadata) * repeats
     if len(rows) != expected:
         raise ValueError(f'each iteration must launch exactly 1 kernel: expected {expected}, got {len(rows)}')
     for i, spec in enumerate(metadata):
-        b, m, n, k = spec['shape']
-        cube = ((k <= 128 and m >= 256 and n >= 256 and m*n*k >= 1 << 24) or
-                (k > 128 and m >= 32 and n >= 128 and b*m*n*k >= 1 << 23))
-        name = 'Fused' if cube else 'Baseline'
+        name = 'Fused' if host_buffers(spec['shape']) else 'Baseline'
         if any(name not in row['Op Name'] for row in rows[i*repeats:(i+1)*repeats]):
             raise ValueError('unexpected dispatch or per-case launch count')
     return rows

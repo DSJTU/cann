@@ -1,6 +1,8 @@
 # 文档索引
 
-当前实现、分派和本地检查见 [solution/README.md](../solution/README.md)。接口与同步约束见 [lessons.md](lessons.md)。源码 `54cc8bd` 已完成设备检查和赛事 15/15 验证。
+当前实现、分派和本地检查见 [solution/README.md](../solution/README.md)。接口与同步约束见 [lessons.md](lessons.md)。
+
+本分支仍在开发。长 K 使用面板批量 Cube，最近一次赛事为 15/15、错误占比 0%；逐点耗时不在共用仓库。`main` 上完成设备回归并经用户确认提升的版本是 `54cc8bd`。本分支尚未做对应的设备回归，也尚未被确认为合并基线。
 
 ## 历史记录
 

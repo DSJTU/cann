@@ -12,11 +12,7 @@ from pathlib import Path
 import re
 import subprocess
 
-
-def uses_cube(shape):
-    batch, m, n, k = shape
-    return ((k <= 128 and m >= 256 and n >= 256 and m * n * k >= 1 << 24) or
-            (k > 128 and m >= 32 and n >= 128 and batch * m * n * k >= 1 << 23))
+from check_launch_profile import host_buffers
 
 
 def main():
@@ -62,7 +58,8 @@ def main():
                 raise RuntimeError(name+' needs BMMMS_TRACE_RUNTIME=ON')
             allocated, freed, error = map(int,summaries[0])
             metadata = json.loads(prefix.with_suffix('.json').read_text())
-            cubes = sum(uses_cube(v['shape']) for v in metadata)
+            buffers = [host_buffers(v['shape']) for v in metadata]
+            cubes = sum(count > 0 for count in buffers)
             calls = {'--capture-cold': 1, '--capture-chain': 4,
                      '--capture-streams': 2, '--streams': 4, '--benchmark': 12,
                      '--profile-five': 5}.get(mode, 2)
@@ -70,10 +67,10 @@ def main():
             syncs = len(re.findall(r'^INTERNAL_SYNC ret=0$',log,re.M))
             expected_registers = cubes*(2 if mode == '--capture-streams' else 1) if mode and mode.startswith('--capture') else 0
             expected_syncs = cubes if mode == '--capture-chain' else 0 if mode and mode.startswith('--capture') else cubes*calls
-            if (allocated != cubes*calls*2 or freed != allocated or error or
+            if (allocated != sum(buffers)*calls or freed != allocated or error or
                     registrations != expected_registers or syncs != expected_syncs):
                 raise RuntimeError(name+' resource counts or runtime status differ from expected ownership')
-            result['resources'][name] = dict(cube_cases=cubes,allocations=allocated,frees=freed,
+            result['resources'][name] = dict(cube_cases=cubes,host_buffers=sum(buffers),allocations=allocated,frees=freed,
                                             registrations=registrations,ordinary_synchronizations=syncs,error=error)
         run(name+'-verify',['python3',root/'tests/npu_data.py','--prefix',prefix,'--verify',output])
         report = json.loads(output.with_suffix('.report.json').read_text())
