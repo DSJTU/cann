@@ -75,7 +75,7 @@ public:
     int GetTiling(AscendC::tiling::TCubeTiling& output) const { output=tiling; return 0; }
 };
 }
-namespace matmul {
+// CANN declares these in the global namespace. matmul:: holds Matmul and MatmulType.
 enum class BatchMode { BATCH_LESS_THAN_L1 = 0, BATCH_LARGE_THAN_L1 = 1, SINGLE_LARGE_THAN_L1 = 2 };
 enum class LayoutMode { NONE = 0, BSNGD = 1, SBNGD = 2, BNGS1S2 = 3, NORMAL = 4 };
 struct MatmulConfig { int batchMode = 0; };
@@ -83,6 +83,7 @@ constexpr MatmulConfig GetNormalConfig(bool = false, bool = false, bool = false,
     BatchMode mode = BatchMode::BATCH_LESS_THAN_L1) {
     return MatmulConfig{int(mode)};
 }
+namespace matmul {
 constexpr MatmulConfig kDefaultConfig = GetNormalConfig();
 template <AscendC::TPosition POSITION, CubeFormat FORMAT, typename TYPE, bool ISTRANS = false,
     LayoutMode LAYOUT = LayoutMode::NONE>

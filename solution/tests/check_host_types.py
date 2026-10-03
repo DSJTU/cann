@@ -58,12 +58,10 @@ struct MatmulApiTiling {
     int GetTiling(AscendC::tiling::TCubeTiling&);
 };
 }
-namespace matmul {
 enum class BatchMode { BATCH_LESS_THAN_L1 = 0, BATCH_LARGE_THAN_L1 = 1, SINGLE_LARGE_THAN_L1 = 2 };
 struct MatmulConfig { int batchMode; };
 constexpr MatmulConfig GetNormalConfig(bool, bool, bool, BatchMode mode) {
     return MatmulConfig{int(mode)};
-}
 }
 '''
 
