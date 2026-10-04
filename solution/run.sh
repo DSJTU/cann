@@ -6,14 +6,16 @@ if [[ ! -f "${ASCEND_HOME_PATH:-}/set_env.sh" ]]; then
     exit 1
 fi
 source "$ASCEND_HOME_PATH/set_env.sh"
-cmake -S . -B build
-cmake --build build -j4
-cd build
-python3 ../scripts/gen_data.py
+task_source=$(pwd)
+task_work="$task_source/../.private/runtime/smoke"
+cmake -S . -B "$task_work"
+cmake --build "$task_work" -j4
+cd "$task_work"
+python3 "$task_source/scripts/gen_data.py"
 cp input/case0/x1.bin input/x1.bin
 cp input/case0/x2.bin input/x2.bin
 cp output/golden_case0/golden_y.bin output/golden_y.bin
 mkdir -p output
 rm -f output/y.bin
 timeout 120 ./batch_matmul_max_sum_custom
-python3 ../scripts/verify_result.py 0
+python3 "$task_source/scripts/verify_result.py" 0

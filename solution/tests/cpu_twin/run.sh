@@ -40,4 +40,7 @@ if [[ $task_debug == 1 ]]; then
 fi
 "$task_work/build/bmmms_cpu_twin" "$task_prefix.bin" "$task_prefix.out.bin" > "$task_prefix.log" 2>&1
 "$task_python" "$task_root/solution/tests/npu_data.py" --prefix "$task_prefix" --verify "$task_prefix.out.bin"
-echo "CPU Twin log: $task_prefix.log"
+gzip -f "$task_prefix.log"
+rm -f "$task_work/run/stub_reg.log"
+rm -rf "$task_work/run/npuchk" "$task_work/run/cceprint"
+echo "CPU Twin log: $task_prefix.log.gz"

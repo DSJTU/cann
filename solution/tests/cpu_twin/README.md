@@ -15,6 +15,8 @@ bash solution/tests/cpu_twin/run.sh --suite long-cube --case 8 --gdb
 
 Python 默认取 PATH 中的 `python3`，SDK 也可由 `ASCEND_HOME_PATH` 提供；`CXX` 可指定编译器。工作目录默认为仓库 `.private/runtime/cpu-twin`，包含 build、data 和运行日志。
 
+验证成功后，执行日志压缩为 `data/<集合>.log.gz`，清除 SDK 自动生成的 `npuchk/`、`cceprint/` 和 `stub_reg.log`。失败或 GDB 调试时保留诊断现场；确认原因后再归档或清理，避免日志在项目根目录散落。
+
 | 集合 | 覆盖 |
 | --- | --- |
 | smoke | 点积与小矩阵 |

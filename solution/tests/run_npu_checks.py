@@ -16,15 +16,16 @@ from check_launch_profile import dispatch
 
 
 def main():
+    root = Path(__file__).resolve().parents[1]
+    work = root.parent / '.private/runtime/npu'
     parser = argparse.ArgumentParser()
-    parser.add_argument('--build', type=Path, default=Path('build-npu'))
-    parser.add_argument('--runs', type=Path, default=Path('runs/device'))
+    parser.add_argument('--build', type=Path, default=work / 'build')
+    parser.add_argument('--runs', type=Path, default=work / 'runs')
     parser.add_argument('--large-prefix', type=Path)
     parser.add_argument('--suites', nargs='+', default=['correctness','extended','performance','short-cube','long-cube'])
     parser.add_argument('--modes', nargs='+', choices=('ordinary','capture-cold','capture-chain','capture-streams'),
                         default=['ordinary','capture-cold','capture-chain','capture-streams'])
     args = parser.parse_args()
-    root = Path(__file__).resolve().parents[1]
     build, runs = args.build.resolve(), args.runs.resolve()
     runs.mkdir(parents=True, exist_ok=True)
     data = runs / 'data'
@@ -38,7 +39,7 @@ def main():
 
     def run(name, command, env=None):
         with (runs/(name+'.log')).open('w') as log:
-            completed = subprocess.run(list(map(str, command)), cwd=root, env=env,
+            completed = subprocess.run(list(map(str, command)), cwd=runs, env=env,
                                        stdout=log, stderr=subprocess.STDOUT)
         result['steps'].append(dict(name=name, exit_code=completed.returncode))
         save()
