@@ -9,8 +9,9 @@ def records(path):
         rows = list(csv.DictReader(source))
     if not rows:
         raise ValueError('empty kernel profile')
+    names = ('fused_kernel', 'bmmms_small_kernel', 'bmmms_dot_kernel')
     for row in rows:
-        if not any(name in row['Op Name'] for name in ('Baseline', 'Fused', 'Scores', 'Finish')):
+        if not any(name in row['Op Name'] for name in names):
             raise ValueError('unexpected kernel in profile: ' + row['Op Name'])
         for key in ('Task Start Time(us)', 'Task Duration(us)'):
             if not math.isfinite(float(row[key])):
@@ -20,16 +21,23 @@ def records(path):
     return sorted(rows, key=lambda row: float(row['Task Start Time(us)']))
 
 
+def dispatch(shape):
+    """Map the three shape-based dispatches to their device kernel names."""
+    _, m, n, k = shape
+    if m == n == 1:
+        return 'bmmms_dot_kernel'
+    if k <= 128 and m <= 32 and n <= 32:
+        return 'bmmms_small_kernel'
+    return 'fused_kernel'
+
+
 def verify(path, metadata, repeats):
     rows = records(path)
     expected = len(metadata) * repeats
     if len(rows) != expected:
         raise ValueError(f'each iteration must launch exactly 1 kernel: expected {expected}, got {len(rows)}')
     for i, spec in enumerate(metadata):
-        b, m, n, k = spec['shape']
-        cube = ((k <= 128 and m >= 256 and n >= 256 and m*n*k >= 1 << 24) or
-                (k > 128 and m >= 32 and n >= 128 and b*m*n*k >= 1 << 23))
-        name = 'Fused' if cube else 'Baseline'
+        name = dispatch(spec['shape'])
         if any(name not in row['Op Name'] for row in rows[i*repeats:(i+1)*repeats]):
             raise ValueError('unexpected dispatch or per-case launch count')
     return rows

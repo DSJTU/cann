@@ -37,6 +37,8 @@ struct bfloat16_t {
 };
 using GM_ADDR = uint8_t*;
 using aclrtStream = void*;
+using aclrtContext = void*;
+using event_t = int;
 struct TensorInfo { const int64_t* shape; int64_t numDims; int32_t dtype; };
 struct TensorGroupInfo { const TensorInfo* tensors; int64_t numTensors; };
 enum Pipe { PIPE_ALL, PIPE_V };
@@ -110,7 +112,7 @@ struct Storage {
 }
 namespace AscendC {
 enum class TPosition { GM, VECIN, VECOUT, VECCALC };
-enum class HardEvent { V_S, S_V, MTE2_V, MTE2_S, S_MTE2, S_MTE3, V_MTE3 };
+enum class HardEvent { V_S, S_V, MTE2_V, MTE2_S, S_MTE2, S_MTE3, V_MTE3, MTE3_V, MTE2_MTE3, MTE3_MTE2, MTE3_S };
 enum class RoundMode { CAST_NONE };
 enum class ReduceOrder { ORDER_ONLY_VALUE };
 inline uint32_t GetBlockIdx() { return sim::block(); }
@@ -129,6 +131,7 @@ template <typename T> class LocalTensor {
 public:
     LocalTensor() = default;
     explicit LocalTensor(std::shared_ptr<sim::Storage> storage, size_t at = 0) : s(storage), offset(at) {}
+    const void* Identity() const { return s.get(); }
     LocalTensor operator[](size_t n) const { return LocalTensor(s, offset + n * sizeof(T)); }
     void Check(size_t i, bool read) const {
         const size_t at = offset + i * sizeof(T);
@@ -181,12 +184,48 @@ public:
     std::shared_ptr<sim::Storage> s;
     template <typename T> LocalTensor<T> Get() { return LocalTensor<T>(s); }
 };
+template <TPosition P, int Depth> class TQue {
+    std::vector<std::shared_ptr<sim::Storage>> slots;
+    std::vector<bool> busy;
+    std::vector<size_t> queued;
+public:
+    void Init(int count, size_t bytes) {
+        for (int i = 0; i < count; ++i) {
+            auto storage = std::make_shared<sim::Storage>(bytes);
+            storage->dmaOperand = P == TPosition::VECIN || P == TPosition::VECOUT;
+            slots.push_back(storage); busy.push_back(false);
+        }
+    }
+    template <typename T> LocalTensor<T> AllocTensor() {
+        for (size_t i = 0; i < slots.size(); ++i)
+            if (!busy[i]) { busy[i] = true; return LocalTensor<T>(slots[i]); }
+        throw std::runtime_error("queue has no free tensor");
+    }
+    template <typename T> void EnQue(LocalTensor<T> tensor) {
+        for (size_t i = 0; i < slots.size(); ++i)
+            if (slots[i].get() == tensor.Identity() && busy[i]) { queued.push_back(i); return; }
+        throw std::runtime_error("enqueue foreign tensor");
+    }
+    template <typename T> LocalTensor<T> DeQue() {
+        if (queued.empty()) throw std::runtime_error("dequeue empty queue");
+        const size_t i = queued.front(); queued.erase(queued.begin());
+        return LocalTensor<T>(slots[i]);
+    }
+    template <typename T> void FreeTensor(LocalTensor<T> tensor) {
+        for (size_t i = 0; i < slots.size(); ++i)
+            if (slots[i].get() == tensor.Identity() && busy[i]) { busy[i] = false; return; }
+        throw std::runtime_error("free foreign tensor");
+    }
+};
 class TPipe {
 public:
     template <TPosition P> void InitBuffer(TBuf<P>& q, size_t n) {
         q.s = std::make_shared<sim::Storage>(n);
         q.s->dmaOperand = P == TPosition::VECIN || P == TPosition::VECOUT;
         Reserve(n);
+    }
+    template <TPosition P, int Depth> void InitBuffer(TQue<P, Depth>& q, int count, size_t n) {
+        q.Init(count, n); Reserve(size_t(count) * n);
     }
     int FetchEventID(HardEvent) { return 0; }
 private:
@@ -224,10 +263,24 @@ template <typename T> void DataCopyPad(LocalTensor<T> dst, GlobalTensor<T> src,
     }
 }
 template <typename T> void DataCopyPad(GlobalTensor<T> dst, LocalTensor<T> src, DataCopyExtParams p) {
-    if (p.blockCount != 1) throw std::runtime_error("CPU model only supports single-block copy");
     src.Aligned();
     src.DmaOperand();
-    for (uint32_t i = 0; i < p.blockLen / sizeof(T); ++i) dst.SetValue(i, src.GetValue(i));
+    const uint32_t count = p.blockLen / sizeof(T);
+    // UB source stride is extra 32-byte blocks after the aligned row.
+    // GM destination stride is the byte gap after blockLen.
+    const uint32_t srcPitch = ((count * sizeof(T) + 31) / 32) * (32 / sizeof(T)) +
+                              p.srcStride * (32 / sizeof(T));
+    const uint32_t dstPitch = (p.blockLen + p.dstStride) / sizeof(T);
+    for (uint32_t row = 0; row < p.blockCount; ++row)
+        for (uint32_t i = 0; i < count; ++i)
+            dst.SetValue(row * dstPitch + i, src.GetValue(row * srcPitch + i));
+}
+template <typename T> void DataCopy(GlobalTensor<T> dst, LocalTensor<T> src, uint32_t n) {
+    DataCopyPad(dst, src, DataCopyExtParams{1, n * uint32_t(sizeof(T)), 0, 0, 0});
+}
+template <typename T> void DataCopy(LocalTensor<T> dst, GlobalTensor<T> src, uint32_t n) {
+    DataCopyPad(dst, src, DataCopyExtParams{1, n * uint32_t(sizeof(T)), 0, 0, 0},
+                DataCopyPadExtParams<T>{false, 0, 0, T(0)});
 }
 template <typename T> void Duplicate(LocalTensor<T> dst, T v, uint32_t n) {
     dst.Aligned();
@@ -270,6 +323,38 @@ inline void WholeReduceSum(LocalTensor<float> dst, LocalTensor<float> src, int32
         }
         dst.SetValue(r * dstStride, values[0]);
     }
+}
+inline float TreeSum(std::vector<float> values) {
+    size_t width = 1; while (width < values.size()) width *= 2;
+    values.resize(width, 0.0f);
+    while (values.size() > 1) {
+        for (size_t i = 0; i < values.size() / 2; ++i) values[i] = values[2*i] + values[2*i+1];
+        values.resize(values.size() / 2);
+    }
+    return values[0];
+}
+inline void Mul(LocalTensor<float> dst, LocalTensor<float> a, LocalTensor<float> b, uint32_t n) {
+    dst.Aligned(); a.Aligned(); b.Aligned();
+    for (uint32_t i = 0; i < n; ++i) dst.SetValue(i, a.GetValue(i) * b.GetValue(i));
+}
+inline void ReduceSum(LocalTensor<float> dst, LocalTensor<float> src, LocalTensor<float>, int32_t n) {
+    dst.Aligned(); src.Aligned();
+    std::vector<float> values; for (int32_t i = 0; i < n; ++i) values.push_back(src.GetValue(i));
+    dst.SetValue(0, TreeSum(values));
+}
+inline void ReduceSum(LocalTensor<float> dst, LocalTensor<float> src, LocalTensor<float>,
+                      int32_t mask, int32_t repeats, int32_t stride) {
+    dst.Aligned(); src.Aligned(); std::vector<float> chunks;
+    for (int32_t r = 0; r < repeats; ++r) {
+        std::vector<float> values;
+        for (int32_t i = 0; i < mask; ++i) values.push_back(src.GetValue(r * stride * 8 + i));
+        chunks.push_back(TreeSum(values));
+    }
+    dst.SetValue(0, TreeSum(chunks));
+}
+inline void Abs(LocalTensor<float> dst, LocalTensor<float> src, uint32_t n) {
+    dst.Aligned(); src.Aligned();
+    for (uint32_t i=0; i<n; ++i) dst.SetValue(i,std::abs(src.GetValue(i)));
 }
 inline void Add(LocalTensor<float> dst, LocalTensor<float> a, LocalTensor<float> b, uint32_t n) {
     dst.Aligned(); a.Aligned(); b.Aligned();

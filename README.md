@@ -1,17 +1,23 @@
 # BatchMatmulMaxSum
 
-Ascend C 实现，支持 FP16/BF16 输入、四种存储布局和 FP32 输出。当前版本在单个 MIX kernel 内完成 Cube 得分、行最大值与最终归约；小型和窄矩阵使用 Vector。`54cc8bd` 已完成目标设备检查及赛事 15/15 验证，用户确认性能提升。提交源码为 [solution/kernel.asc](solution/kernel.asc)。
+Ascend C 实现，支持 FP16/BF16 输入、四种存储布局与 FP32 输出。提交入口为 [solution/kernel.asc](solution/kernel.asc)，每次调用恰好启动一个 kernel。
+
+Cube 直接读取原始 ND 输入，按 batch/M/N 分配任务，逐块归约得分，最后在同一个 MIX kernel 中合并行最大值。小矩阵使用缓存输入的 Vector 路径，M=N=1 使用专用点积。
+
+完整 K 的硬件 FP32 累加有强抵消精度限制；CPU 数学模型不模拟这类硬件舍入。实现结构和验证范围见构建说明。
 
 - [算子契约](cann_problem.md)
 - [构建与验证](solution/README.md)
-- [历史记录](docs/README.md)
-- [Ascend C 开发要点](docs/lessons.md)
-- [实验目录说明](solution/experiments/README.md)
+- [Ascend C 接口与同步要点](docs/lessons.md)
+- [官方 CPU Twin 本机调试](solution/tests/cpu_twin/README.md)
 
-本地检查依赖 g++、clang++ 和 NumPy：
+本地检查：
 
 ```bash
 python3 solution/tests/test_cpu.py
+python3 solution/tests/test_finish.py
 ```
 
-设备编译与真机验证需要匹配的 CANN SDK 和 NPU。日常迭代运行相关本地检查；关键检查点先设备回归，再由用户跑分。
+共用目录只保存算子契约、提交实现、构建工具和可复用测试。个人环境、参考代码、实验、成绩和开发记录放在 Git 忽略的 `.private/`；提交前检查暂存区内容。
+
+本机构建、测试数据、日志与 SDK 自动诊断文件统一放 `.private/runtime/`。清理目录时同时扫描 Git 忽略文件；各验证入口的产物位置与日志保留方式见对应构建说明。

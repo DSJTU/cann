@@ -35,7 +35,7 @@ y[b] = sum_m(max_n(sum_k(X1[b,m,k] * X2[b,k,n])))
 
 核心计算必须由 Ascend C 算子在昇腾 NPU 上完成。Host 只做元数据解析和启动；不能把数值计算移至 CPU，也不能用空 kernel 占位。
 
-赛事 profiling 要求每次迭代恰好启动 **1 个 kernel**，包含所有分派路径。矩阵乘和最终归约不能通过两次 Host launch 串联。此约束由用户提供的实际评测错误确认：`Expected 75 launches, got 105`；数值与设备执行通过不能替代启动数量验收。
+赛事 profiling 要求每次迭代恰好启动 **1 个 kernel**，包含所有分派路径。矩阵乘和最终归约不能通过两次 Host launch 串联；数值与设备执行通过不能替代启动数量验收。
 
 沿用工程提供的 run_kernel ABI：x1 与元数据、x2 与元数据、y 与元数据、availableCoreNum、stream、transposeX1、transposeX2。结构体布局和参数顺序以当前模板为准；当前类型编码 FP16=1、BF16=2、FP32=0。
 

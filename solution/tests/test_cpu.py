@@ -24,18 +24,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def cpu_source(source_path):
     source = source_path.read_text()
-    # Submission code must remain free of debug output. This is our regression
-    # check, not a claim that the platform's complete validation rules are known.
     assert not re.search(r'\b(?:printf|fprintf|puts|putchar|cout|cerr|DumpTensor)\b', source)
     assert '#include <cstdio>' not in source and '#include <stdio.h>' not in source
     source = re.sub(r'^#include "[^"]+"\n', '', source, flags=re.MULTILINE)
-    launch = re.compile(r'(Baseline<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);')
-    source, count = launch.subn(r'sim::Launch(\2, [&] { \1(\3); });', source)
-    assert count == 8, f'unexpected launch count: {count}'
-    source, count = re.subn(
-        r'(Fused<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
-        r'sim::LaunchMixed(\2, [&] { \1(\3); });', source)
-    assert count == 2, f'unexpected Cube launch count: {count}'
+    for name, expected, launcher in (
+            ('fused_kernel', 1, 'LaunchMixed'), ('bmmms_small_kernel', 1, 'Launch'), ('bmmms_dot_kernel', 2, 'Launch')):
+        source, count = re.subn(
+            rf'({name}<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
+            rf'sim::{launcher}(\2, [&] {{ \1(\3); }});', source)
+        assert count == expected, (name, count)
     assert '<<<' not in source
     return '#include "sim_matmul.h"\n' + source
 
@@ -45,7 +42,7 @@ def quantize(values, dtype):
     if dtype == 1:
         data = values.astype(np.float16)
         return data.view(np.uint16), data.astype(np.float64)
-    # BF16 round-to-nearest-even, matching conversion of these finite values.
+    # BF16 round-to-nearest-even on the actual stored input.
     bits = values.view(np.uint32)
     bits = (bits + np.uint32(0x7FFF) + ((bits >> 16) & 1)) >> 16
     stored = bits.astype(np.uint16)
@@ -53,8 +50,6 @@ def quantize(values, dtype):
 
 
 def cases():
-    # Covers batch strides, N tails, K tails, full K tiles followed by a tail,
-    # and M/N partition boundaries.
     shapes = [
         (1, 1, 1, 32), (3, 1, 1, 40), (2, 1, 1, 8192),
         (1, 2, 3, 32), (2, 15, 17, 40), (3, 17, 15, 72),
@@ -65,21 +60,22 @@ def cases():
         (1, 7, 15, 56), (1, 9, 16, 96), (1, 5, 17, 112), (1, 3, 33, 120),
         (1, 8192, 1, 32), (1, 65, 1, 40), (64, 3, 2, 32),
     ]
+    # Exercise layouts, batch strides, tails and several worker counts.
     for i, (shape, dtype, ta, tb) in enumerate(itertools.product(shapes, (1, 2), (False, True), (False, True))):
         yield shape, dtype, ta, tb, (1, 24, 32)[i % 3], 'random'
-    # Negative-only rows expose zero initialization and zero-filled N tails.
+    # Negative rows detect invalid zero maxima and padded-column leakage.
     for dtype, ta, tb, cores in itertools.product((1, 2), (False, True), (False, True), (1, 24)):
         yield (2, 17, 131, 40), dtype, ta, tb, cores, 'negative'
-    # N maxima at different columns for different M rows expose a wrong
-    # sum(max(partial_scores)) or sum(partial_scores) merge of N partitions.
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (1, 3, 257, 32), dtype, ta, tb, 24, 'partition'
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (2, 33, 19, 40), dtype, ta, tb, 24, 'zero'
         yield (1, 17, 1, 32), dtype, ta, tb, 1, 'cancellation'
         yield (1, 17, 1, 32), dtype, ta, tb, 24, 'cancellation'
-    # Exceed the real production parallelism threshold, including multiple
-    # adjacent batch outputs and M ranges not divisible by the group count.
+    for shape, dtype, ta, tb, cores in itertools.product(
+            ((3, 31, 32, 128), (2, 32, 31, 72), (64, 3, 2, 32)),
+            (1, 2), (False, True), (False, True), (1, 20)):
+        yield shape, dtype, ta, tb, cores, 'random'
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (3, 129, 257, 40), dtype, ta, tb, 24, 'negative'
         yield (3, 129, 257, 40), dtype, ta, tb, 24, 'zero'
@@ -102,8 +98,6 @@ def extended_cases():
             ((21, 2, 17, 32), 20),
         ):
             yield shape, dtype, ta, tb, cores, 'random'
-    # Multi-row long K. (1, 9, 17, 8192) has one row per core at 20 cores, so it
-    # never shares a B tile. These shapes do, including a full N tile plus a tail.
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         for cores in (1, 20):
             for mode in ('k-cancellation', 'mixed-magnitude', 'close-max'):
@@ -120,15 +114,14 @@ def performance_cases():
               (1, 64, 257, 128), (1, 129, 257, 128)]
     for i, (shape, dtype, ta, tb) in enumerate(itertools.product(shapes, (1, 2), (False, True), (False, True))):
         yield shape, dtype, ta, tb, (1, 20)[(i // 2) % 2], 'random'
-    # Cross the actual Cube dispatch threshold, including M/N tails and worker reuse.
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (1, 257, 513, 128), dtype, ta, tb, 20, 'random'
         yield (1, 1649, 257, 40), dtype, ta, tb, 20, 'negative'
-    # Short-K A cache holds at most 128 rows. 129 rows must reload A per N tile.
-    # N=65 crosses both the 32-column and 64-column tile widths.
+        yield (1, 256, 2048, 32), dtype, ta, tb, 20, 'random'
+        yield (1, 256, 1031, 64), dtype, ta, tb, 1, 'negative'
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
-        yield (1, 128, 65, 128), dtype, ta, tb, 1, 'random'
-        yield (1, 129, 65, 128), dtype, ta, tb, 1, 'random'
+        yield (1, 128, 65, 64), dtype, ta, tb, 1, 'random'
+        yield (1, 129, 65, 64), dtype, ta, tb, 1, 'random'
         yield (1, 20, 33, 40), dtype, ta, tb, 1, 'negative'
         yield (1, 32, 33, 128), dtype, ta, tb, 20, 'negative'
         yield (1, 64, 257, 128), dtype, ta, tb, 20, 'close-max'
@@ -139,20 +132,63 @@ def cube_finish_cases():
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (1, 1649, 257, 40), dtype, ta, tb, 20, 'm-cancellation'
         yield (1, 8191, 257, 40), dtype, ta, tb, 20, 'm-magnitude'
-        # One core reuses Finish's UB across batches, with different row values.
         yield (3, 8192, 257, 40), dtype, ta, tb, 1, 'm-cancellation'
 
 
+def short_cube_cases():
+    """Short-K boundaries, N partitions and task reuse."""
+    definitions = [
+        ((1, 32, 256, 128), 'random'),
+        ((1, 32, 255, 128), 'negative'),
+        ((1, 16, 512, 128), 'negative'),
+        ((1, 15, 1025, 128), 'random'),
+        ((1, 513, 63, 40), 'negative'),
+        ((1, 32, 4097, 32), 'random'),
+        ((1, 33, 2049, 40), 'negative'),
+        ((1, 64, 513, 128), 'close-max'),
+        ((8, 16, 65, 128), 'random'),
+        ((3, 65, 257, 40), 'random'),
+        ((1, 32, 1025, 32), 'partition'),
+        ((3, 129, 257, 40), 'm-cancellation'),
+    ]
+    for (shape, mode), dtype, ta, tb, cores in itertools.product(
+            definitions, (1, 2), (False, True), (False, True), (1, 20)):
+        yield shape, dtype, ta, tb, cores, mode
+
+
 def long_cube_cases():
-    """Cross production long-K dispatch: K/M/N tails, reuse, compensation."""
+    """Long-K tails, task reuse, mixed magnitudes and cancellation."""
     definitions = [((1, 65, 129, 8192), mode) for mode in
                    ('k-cancellation', 'mixed-magnitude', 'close-max', 'block-cancellation')]
     definitions += [((4, 65, 129, 256), 'random'), ((8, 33, 129, 392), 'random'),
+                    ((1, 64, 512, 256), 'k-cancellation'),
+                    ((1, 64, 520, 256), 'negative'),
                     ((1, 65, 129, 1024), 'random'), ((1, 33, 129, 8192), 'random'),
-                    ((4, 65, 129, 392), 'negative')]
+                    ((4, 65, 129, 392), 'negative'),
+                    ((1, 16, 64, 4096), 'k-cancellation'), ((1, 16, 80, 392), 'negative')]
     for i, ((shape, mode), dtype, ta, tb) in enumerate(itertools.product(
             definitions, (1, 2), (False, True), (False, True))):
         yield shape, dtype, ta, tb, (1, 20)[i % 2], mode
+    windows = [((1, 64, 129, 512), 'random'),
+               ((1, 64, 257, 256), 'close-max'),
+               ((1, 64, 385, 256), 'negative'),
+               ((1, 65, 513, 136), 'random'),
+               ((3, 65, 513, 136), 'partition'),
+               ((1, 65, 1025, 136), 'm-cancellation')]
+    for (shape, mode), dtype, ta, tb, cores in itertools.product(
+            windows, (1, 2), (False, True), (False, True), (1, 20)):
+        yield shape, dtype, ta, tb, cores, mode
+    for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
+        yield (1, 65, 257, 8192), dtype, ta, tb, 1, 'block-cancellation'
+        yield (1, 257, 2048, 136), dtype, ta, tb, 20, 'random'
+    for dtype, ta, tb, cores in itertools.product((1, 2), (False, True), (False, True), (1, 20)):
+        yield (1, 65, 129, 512), dtype, ta, tb, cores, 'panel-magnitude'
+        yield (1, 65, 513, 520), dtype, ta, tb, cores, 'panel-magnitude-negative'
+    for shape, dtype, ta, tb, cores in itertools.product(
+            ((1, 65, 513, 1160), (1, 65, 257, 2560),
+             (1, 65, 129, 1792), (1, 65, 129, 2304)),
+            (1, 2), (False, True), (False, True), (1, 20)):
+        yield shape, dtype, ta, tb, cores, 'random'
 
 
 def make_inputs(shape, mode, rng):
@@ -211,6 +247,13 @@ def make_inputs(shape, mode, rng):
             b[:, start:start + 128, :] = 4096
             b[:, start + 128:start + 256, :] = 2 ** -10
             b[:, start + 256:start + 384, :] = -4096
+    elif mode in ('panel-magnitude', 'panel-magnitude-negative'):
+        a.fill(1024)
+        b.fill(0)
+        sign = 1 if mode == 'panel-magnitude' else -1
+        b[:, :128, :] = sign * 8192
+        b[:, 128:256, :] = sign * 2 ** -22
+        b[:, 256:384, :] = -sign * 8192
     elif mode == 'close-max':
         a.fill(1)
         b.fill(0)
@@ -221,7 +264,7 @@ def make_inputs(shape, mode, rng):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', choices=('all', 'correctness', 'extended', 'performance', 'cube-finish', 'long-cube'), default='all')
+    parser.add_argument('--suite', choices=('all', 'correctness', 'extended', 'performance', 'cube-finish', 'short-cube', 'long-cube'), default='all')
     args = parser.parse_args()
     source_path = ROOT / 'kernel.asc'
     check_host_types()
@@ -230,7 +273,7 @@ def main():
         (temp / 'kernel_cpu.inc').write_text(cpu_source(source_path))
         executable = temp / 'sim_runner'
         subprocess.run([
-            'g++', '-std=c++14', '-O2', '-Wall', '-Wextra', '-Werror',
+            'g++', '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror',
             '-Wno-unused-parameter', '-ffp-contract=off',
             '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
             '-pthread',
@@ -244,6 +287,8 @@ def main():
             specs.extend(performance_cases())
         if args.suite == 'cube-finish':
             specs.extend(cube_finish_cases())
+        if args.suite in ('all', 'short-cube'):
+            specs.extend(short_cube_cases())
         if args.suite in ('all', 'long-cube'):
             specs.extend(long_cube_cases())
         payload = bytearray(struct.pack('<I', len(specs)))
@@ -259,13 +304,14 @@ def main():
             payload += struct.pack('<9I', *shape, dtype, ta, tb, cores, index % 2)
             payload += physical_a.tobytes(order='C') + physical_b.tobytes(order='C')
             expected.append(golden)
-        # LeakSanitizer cannot run under this sandbox's ptrace supervision.
-        # AddressSanitizer and UBSan remain enabled.
+        # LSan cannot run under ptrace; ASan and UBSan remain enabled.
         env = dict(os.environ)
         env['ASAN_OPTIONS'] = env.get('ASAN_OPTIONS', '') + ':detect_leaks=0'
         result = subprocess.run([str(executable)], input=payload, capture_output=True, env=env)
         if result.returncode:
             raise RuntimeError(result.stderr.decode(errors='replace'))
+        if os.environ.get('BMMMS_REQUEST_LOG'):
+            print(result.stderr.decode(errors='replace'), end='')
         values = np.frombuffer(result.stdout, dtype=np.float32)
         assert len(values) == sum(s[0][0] for s in specs)
         offset = 0

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the actual Finish kernel against math.fsum; CPU model only."""
+"""Check the native Finish method against math.fsum; CPU model only."""
 import math
 import os
 from pathlib import Path
@@ -47,7 +47,7 @@ def main():
         (tmp / 'kernel_cpu.inc').write_text(cpu_source(ROOT / 'kernel.asc'))
         executable = tmp / 'finish_runner'
         subprocess.run([
-            'g++', '-std=c++14', '-O2', '-Wall', '-Wextra', '-Werror',
+            'g++', '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror',
             '-Wno-unused-parameter', '-ffp-contract=off', '-fsanitize=address,undefined',
             '-fno-omit-frame-pointer', '-pthread', '-I', str(ROOT / 'tests'), '-I', str(tmp),
             str(ROOT / 'tests/finish_runner.cpp'), '-o', str(executable),
