@@ -201,6 +201,12 @@ def long_cube_cases():
         # Forty resident tasks at 20 cores each own four base-N tiles. Covers
         # the 256-column batch path at production parallelism, including M tail.
         yield (1, 257, 2048, 136), dtype, ta, tb, 20, 'random'
+    for dtype, ta, tb, cores in itertools.product((1, 2), (False, True), (False, True), (1, 20)):
+        # Both narrow and wide windows: a 2^30 panel, a 2^-5 panel,
+        # and a -2^30 panel. Kahan loses the small panel in FP32.
+        yield (1, 65, 129, 512), dtype, ta, tb, cores, 'panel-magnitude'
+        # Multiple windows, uneven rows/columns and a final short K panel.
+        yield (1, 65, 513, 520), dtype, ta, tb, cores, 'panel-magnitude-negative'
 
 
 def make_inputs(shape, mode, rng):
@@ -259,6 +265,13 @@ def make_inputs(shape, mode, rng):
             b[:, start:start + 128, :] = 4096
             b[:, start + 128:start + 256, :] = 2 ** -10
             b[:, start + 256:start + 384, :] = -4096
+    elif mode in ('panel-magnitude', 'panel-magnitude-negative'):
+        a.fill(1024)
+        b.fill(0)
+        sign = 1 if mode == 'panel-magnitude' else -1
+        b[:, :128, :] = sign * 8192
+        b[:, 128:256, :] = sign * 2 ** -22
+        b[:, 256:384, :] = -sign * 8192
     elif mode == 'close-max':
         a.fill(1)
         b.fill(0)

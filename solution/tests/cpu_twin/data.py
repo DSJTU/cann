@@ -21,13 +21,21 @@ def fixtures(suite):
             yield shape, dtype, ta, tb, 1, 'random'
 
 
+def precision_fixtures():
+    for shape, dtype, ta, tb, cores in itertools.product(
+            ((1, 65, 129, 512), (1, 65, 513, 520)), (1, 2),
+            (False, True), (False, True), (1, 2)):
+        mode = 'panel-magnitude' if shape[2] == 129 else 'panel-magnitude-negative'
+        yield shape, dtype, ta, tb, cores, mode
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', choices=('smoke', 'short-cube', 'long-cube', 'all'), default='smoke')
+    parser.add_argument('--suite', choices=('smoke', 'short-cube', 'long-cube', 'long-precision', 'all'), default='smoke')
     parser.add_argument('--case', type=int, help='select one case for a GDB session')
     parser.add_argument('--prefix', required=True)
     args = parser.parse_args()
-    selected = list(fixtures(args.suite))
+    selected = list(precision_fixtures() if args.suite == 'long-precision' else fixtures(args.suite))
     if args.case is not None:
         if not 0 <= args.case < len(selected):
             parser.error(f'case must be between 0 and {len(selected)-1}')

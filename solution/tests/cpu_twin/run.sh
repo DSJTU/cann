@@ -16,7 +16,7 @@ while [[ $# -gt 0 ]]; do
         --suite) task_suite=$2; shift 2 ;;
         --case) task_case=(--case "$2"); shift 2 ;;
         --gdb) task_debug=1; shift ;;
-        *) echo "Usage: $0 [--suite smoke|short-cube|long-cube|all] [--case INDEX] [--gdb]" >&2; exit 1 ;;
+        *) echo "Usage: $0 [--suite smoke|short-cube|long-cube|long-precision|all] [--case INDEX] [--gdb]" >&2; exit 1 ;;
     esac
 done
 task_work="$task_root/.private/cpu-twin"
