@@ -26,7 +26,7 @@ def dispatch(shape):
     _, m, n, k = shape
     if m == n == 1:
         return 'bmmms_dot_kernel'
-    if k <= 128 and m <= 32 and n <= 32:
+    if m <= 32 and n <= 64 and k <= 256 and n*k <= 8192 and m*n*k <= 65536:
         return 'bmmms_small_kernel'
     return 'fused_kernel'
 

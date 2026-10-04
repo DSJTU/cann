@@ -1,4 +1,4 @@
-// Synchronous mathematical model for layout and bounds checks.
+// Mathematical model for layout and bounds checks; async GM slots are modeled synchronously.
 // FP64 dot products do not model Cube precision, pipelines or graph lifetime.
 #pragma once
 #include <atomic>
@@ -34,11 +34,11 @@ inline void* GetSysWorkSpacePtr() { return nullptr; }
 namespace platform_ascendc {
 struct PlatformAscendC { size_t GetLibApiWorkSpaceSize() const { return 64; } uint32_t GetCoreNumAic() const { return 20; } };
 struct PlatformAscendCManager {
-    static PlatformAscendC* GetInstance(const char*) { static PlatformAscendC platform; return &platform; }
+    static PlatformAscendC* GetInstance(const char* = nullptr) { static PlatformAscendC platform; return &platform; }
 };
 }
 namespace matmul_tiling {
-enum class TPosition { GM, LCM };
+enum class TPosition { GM, LCM, VECIN };
 using CubeFormat = ::CubeFormat;
 enum class DataType { DT_FLOAT16, DT_BF16, DT_BFLOAT16 = DT_BF16, DT_FLOAT };
 class MatmulApiTiling {
@@ -65,7 +65,8 @@ class Matmul {
     AscendC::GlobalTensor<typename A::T> a;
     AscendC::GlobalTensor<typename B::T> b;
     uint32_t orgM=0, orgN=0, orgK=0, m=0, n=0, k=0, baseM=0, baseN=0, tile=0;
-    bool ta=false, tb=false, done=true, pending=false;
+    bool ta=false, tb=false, done=true, pending=false, asynchronous=false;
+    AscendC::GlobalTensor<typename C::T> workspace;
 public:
     void Init(const AscendC::tiling::TCubeTiling* t) {
         orgM=t->orgM; orgN=t->orgN; orgK=t->orgK; baseM=t->baseM; baseN=t->baseN;
@@ -88,7 +89,9 @@ public:
         if (trans && !B::isTrans) throw std::runtime_error("MatmulType must enable B transpose");
         b=input; tb=trans;
     }
+    void SetWorkspace(AscendC::GlobalTensor<typename C::T> input) { workspace=input; }
     template <bool sync=true> bool Iterate() {
+        asynchronous=!sync;
         if (pending) throw std::runtime_error("Iterate before consuming the current tile");
         if (tile * baseN >= n) { done=true; return false; }
         pending=true;
@@ -112,6 +115,13 @@ public:
         ++tile;
         pending=false;
         if (tile * baseN >= n) done=true;
+    }
+    template <bool sync=true> AscendC::GlobalTensor<typename C::T> GetTensorC() {
+        if (sync || !asynchronous || done) throw std::runtime_error("unexpected async GM output mode");
+        pending=true;
+        auto output=workspace[tile*baseM*baseN];
+        GetTensorC<false>(output,0,true);
+        return output;
     }
     void End() const { if (pending || !done) throw std::runtime_error("Matmul result was not consumed"); }
 };

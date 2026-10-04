@@ -28,7 +28,7 @@ def cpu_source(source_path):
     assert '#include <cstdio>' not in source and '#include <stdio.h>' not in source
     source = re.sub(r'^#include "[^"]+"\n', '', source, flags=re.MULTILINE)
     for name, expected, launcher in (
-            ('fused_kernel', 1, 'LaunchMixed'), ('bmmms_small_kernel', 1, 'Launch'), ('bmmms_dot_kernel', 2, 'Launch')):
+            ('fused_kernel', 1, 'LaunchMixed'), ('bmmms_small_kernel', 4, 'Launch'), ('bmmms_dot_kernel', 2, 'Launch')):
         source, count = re.subn(
             rf'({name}<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
             rf'sim::{launcher}(\2, [&] {{ \1(\3); }});', source)

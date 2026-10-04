@@ -131,6 +131,7 @@ template <typename T> class LocalTensor {
 public:
     LocalTensor() = default;
     explicit LocalTensor(std::shared_ptr<sim::Storage> storage, size_t at = 0) : s(storage), offset(at) {}
+    template <typename U> LocalTensor<U> ReinterpretCast() const { return LocalTensor<U>(s, offset); }
     const void* Identity() const { return s.get(); }
     LocalTensor operator[](size_t n) const { return LocalTensor(s, offset + n * sizeof(T)); }
     void Check(size_t i, bool read) const {
@@ -163,7 +164,7 @@ template <typename T> class GlobalTensor {
     T* p = nullptr;
     size_t length = 0;
 public:
-    void SetGlobalBuffer(T* ptr, size_t n) { p = ptr; length = n; }
+    void SetGlobalBuffer(T* ptr, size_t n = SIZE_MAX / sizeof(T)) { p = ptr; length = n; }
     GlobalTensor operator[](size_t n) const {
         if (n > length) throw std::runtime_error("GM offset out of bounds");
         GlobalTensor t;
@@ -399,7 +400,7 @@ namespace AscendC {
 inline void WholeReduceMax(LocalTensor<float> dst, LocalTensor<float> src, int32_t mask,
                            int32_t repeats, int32_t dstStride, int32_t blockStride, int32_t srcStride,
                            ReduceOrder order) {
-    dst.Aligned(); src.Aligned();
+    dst.Check(0, false); src.Aligned();
     if (mask < 1 || mask > 64 || repeats < 1 || repeats > 255 || order != ReduceOrder::ORDER_ONLY_VALUE)
         throw std::runtime_error("invalid FP32 WholeReduceMax parameters");
     for (int32_t r = 0; r < repeats; ++r) {

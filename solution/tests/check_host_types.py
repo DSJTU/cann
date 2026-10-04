@@ -35,10 +35,10 @@ aclError aclrtSynchronizeStream(aclrtStream);
 namespace AscendC { namespace tiling { struct TCubeTiling { uint32_t baseM, baseN; }; } }
 namespace platform_ascendc {
 struct PlatformAscendC { size_t GetLibApiWorkSpaceSize() const; uint32_t GetCoreNumAic() const; };
-struct PlatformAscendCManager { static PlatformAscendC* GetInstance(const char*); };
+struct PlatformAscendCManager { static PlatformAscendC* GetInstance(const char* = nullptr); };
 }
 namespace matmul_tiling {
-enum class TPosition { GM, LCM };
+enum class TPosition { GM, LCM, VECIN };
 enum class CubeFormat { ND };
 enum class DataType { DT_FLOAT16, DT_BF16, DT_BFLOAT16 = DT_BF16, DT_FLOAT };
 struct MatmulApiTiling {
@@ -62,7 +62,7 @@ def host_source(path):
     source = re.sub(r'^#include "[^"]+"\n', '', path.read_text(), flags=re.MULTILINE)
     # Remove only the reviewed device-only classes, keeping Schedule/Plan
     # and every Host function intact for the address-space check.
-    for name in ('NativeCube', 'SmallMatrix', 'BmmmsDotKernel'):
+    for name in ('FusedMaxSim', 'BmmmsSmallKernel', 'BmmmsDotKernel'):
         match = re.search(r'template <[^>]+>\s*class '+name+r'\s*\{', source)
         assert match, name
         depth, end = 1, match.end()
@@ -90,8 +90,8 @@ def host_source(path):
         else:
             replacement = ''
         source = source[:match.start()] + replacement + source[end:]
-    assert names == ['fused_kernel', 'bmmms_small_kernel', 'bmmms_dot_kernel'], names
-    for pattern, expected in ((r'fused_kernel<[^>]+>', 1), (r'bmmms_small_kernel<[^>]+>', 1), (r'bmmms_dot_kernel<[^>]+>', 2)):
+    assert names == ['fused_kernel', 'bmmms_dot_kernel', 'bmmms_small_kernel'], names
+    for pattern, expected in ((r'fused_kernel<[^>]+>', 1), (r'bmmms_small_kernel<[^>]+>', 4), (r'bmmms_dot_kernel<[^>]+>', 2)):
         source, count = re.subn(
             '(' + pattern + r')<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
             r'(void(stream), void(\2), \1(\3));', source)

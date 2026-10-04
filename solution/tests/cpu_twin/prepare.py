@@ -19,7 +19,7 @@ def launch(match):
     return f'TwinLaunch(KernelMode::{mode}, "{name}", ({name}<{specialization}>), {blocks}, '
 
 text = re.sub(r'(fused_kernel|bmmms_small_kernel|bmmms_dot_kernel)<([^<>]+)><<<([^,]+), nullptr, stream>>>\(', launch, text)
-if counts != {'fused_kernel': 1, 'bmmms_small_kernel': 1, 'bmmms_dot_kernel': 2} or '<<<' in text or '__mix__(' in text or '__schedmode__(' in text:
+if counts != {'fused_kernel': 1, 'bmmms_small_kernel': 4, 'bmmms_dot_kernel': 2} or '<<<' in text or '__mix__(' in text or '__schedmode__(' in text:
     raise RuntimeError('kernel launch structure changed; review the CPU Twin adapter')
 destination.parent.mkdir(parents=True, exist_ok=True)
 destination.write_text(f'#line 1 "{source.resolve()}"\n' + text)
