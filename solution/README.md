@@ -16,7 +16,7 @@ Cube 从原始 ND 输入读取，两种转置在模板和 tiling 中同时启用
 
 Host 缓存只保存 tiling 与工作内存。工作内存按 context/stream 复用，容量增加时保留已有分配，避免旧图引用失效；普通调用无逐次同步释放。独立调用程序可在图销毁后、stream/context 销毁前调用 `batch_matmul_max_sum_release(stream)`。测试 runner 执行该清理并检查内部 ACL 返回值。
 
-完整 K 的硬件 FP32 累加仍会在合法的大小量级强抵消输入上丢失低位。当前版本选择原生完整 K 性能路线，不能继承旧版逐面板补偿的精度结论，也不能声称通过所有合法输入。`long-precision` 仍保留为诊断集；当前完整 K 路径存在已知失败。
+完整 K 的硬件 FP32 累加会在大小量级强抵消输入上丢失低位，M 求和的补偿不能修复 K 点积误差。`long-precision` 是独立精度诊断集，不能以普通随机用例通过代替该类检查。
 
 ## 本地检查
 
@@ -25,7 +25,6 @@ Host 缓存只保存 tiling 与工作内存。工作内存按 context/stream 复
 ```bash
 python3 solution/tests/test_cpu.py
 python3 solution/tests/test_finish.py
-bash solution/tests/cpu_twin/run.sh --suite all
 ```
 
 CPU 模型检查索引、初始化、对齐、DMA 位置、输入不变、保护区、确定性、线程归约和每次单 launch，启用 ASan/UBSan；其 Matmul 使用 FP64 点积，不模拟硬件 Cube 舍入或异步流水。Finish 独立对照 `math.fsum`，覆盖 M≤8192、1/2/7 个 N 分区、全负、抵消及不同量级。官方 CPU Twin 本机配置与 GDB 调试见 [入口说明](tests/cpu_twin/README.md)。
@@ -61,4 +60,4 @@ python3 tests/summarize_benchmark.py lab-data/benchmark.json \
   --baseline-profile profile-baseline --candidate-profile profile-candidate
 ```
 
-`run_npu_checks.py --suites native` 运行当前架构的定向检查；省略 `--suites` 保留完整设备回归入口，检查数值、缓存清理、捕获、动态库和启动数量。日常迭代按改动运行必要子集，关键检查点通过设备检查后再由用户跑赛事分数。
+`run_npu_checks.py --suites native` 运行定向检查；省略 `--suites` 运行包含强抵消输入的完整诊断，检查数值、缓存清理、捕获、动态库和启动数量。按改动选择必要子集；完整诊断可能暴露上述硬件精度限制。

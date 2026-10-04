@@ -24,8 +24,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def cpu_source(source_path):
     source = source_path.read_text()
-    # Submission code must remain free of debug output. This is our regression
-    # check, not a claim that the platform's complete validation rules are known.
     assert not re.search(r'\b(?:printf|fprintf|puts|putchar|cout|cerr|DumpTensor)\b', source)
     assert '#include <cstdio>' not in source and '#include <stdio.h>' not in source
     source = re.sub(r'^#include "[^"]+"\n', '', source, flags=re.MULTILINE)
@@ -44,7 +42,7 @@ def quantize(values, dtype):
     if dtype == 1:
         data = values.astype(np.float16)
         return data.view(np.uint16), data.astype(np.float64)
-    # BF16 round-to-nearest-even, matching conversion of these finite values.
+    # BF16 round-to-nearest-even on the actual stored input.
     bits = values.view(np.uint32)
     bits = (bits + np.uint32(0x7FFF) + ((bits >> 16) & 1)) >> 16
     stored = bits.astype(np.uint16)
@@ -52,8 +50,6 @@ def quantize(values, dtype):
 
 
 def cases():
-    # Covers batch strides, N tails, K tails, full K tiles followed by a tail,
-    # and M/N partition boundaries.
     shapes = [
         (1, 1, 1, 32), (3, 1, 1, 40), (2, 1, 1, 8192),
         (1, 2, 3, 32), (2, 15, 17, 40), (3, 17, 15, 72),
@@ -64,26 +60,22 @@ def cases():
         (1, 7, 15, 56), (1, 9, 16, 96), (1, 5, 17, 112), (1, 3, 33, 120),
         (1, 8192, 1, 32), (1, 65, 1, 40), (64, 3, 2, 32),
     ]
+    # Exercise layouts, batch strides, tails and several worker counts.
     for i, (shape, dtype, ta, tb) in enumerate(itertools.product(shapes, (1, 2), (False, True), (False, True))):
         yield shape, dtype, ta, tb, (1, 24, 32)[i % 3], 'random'
-    # Negative-only rows expose zero initialization and zero-filled N tails.
+    # Negative rows detect invalid zero maxima and padded-column leakage.
     for dtype, ta, tb, cores in itertools.product((1, 2), (False, True), (False, True), (1, 24)):
         yield (2, 17, 131, 40), dtype, ta, tb, cores, 'negative'
-    # N maxima at different columns for different M rows expose a wrong
-    # sum(max(partial_scores)) or sum(partial_scores) merge of N partitions.
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (1, 3, 257, 32), dtype, ta, tb, 24, 'partition'
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (2, 33, 19, 40), dtype, ta, tb, 24, 'zero'
         yield (1, 17, 1, 32), dtype, ta, tb, 1, 'cancellation'
         yield (1, 17, 1, 32), dtype, ta, tb, 24, 'cancellation'
-    # Dedicated cached small-matrix vectors: maximal tile, K tail and batch reuse.
     for shape, dtype, ta, tb, cores in itertools.product(
             ((3, 31, 32, 128), (2, 32, 31, 72), (64, 3, 2, 32)),
             (1, 2), (False, True), (False, True), (1, 20)):
         yield shape, dtype, ta, tb, cores, 'random'
-    # Exceed the real production parallelism threshold, including multiple
-    # adjacent batch outputs and M ranges not divisible by the group count.
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (3, 129, 257, 40), dtype, ta, tb, 24, 'negative'
         yield (3, 129, 257, 40), dtype, ta, tb, 24, 'zero'
@@ -106,8 +98,6 @@ def extended_cases():
             ((21, 2, 17, 32), 20),
         ):
             yield shape, dtype, ta, tb, cores, 'random'
-    # Multi-row long K. (1, 9, 17, 8192) stays on Vector. (1, 32, 64, 8192) meets
-    # the long-K Cube gate and packs every K panel of its single 64-column tile.
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         for cores in (1, 20):
             for mode in ('k-cancellation', 'mixed-magnitude', 'close-max'):
@@ -124,15 +114,11 @@ def performance_cases():
               (1, 64, 257, 128), (1, 129, 257, 128)]
     for i, (shape, dtype, ta, tb) in enumerate(itertools.product(shapes, (1, 2), (False, True), (False, True))):
         yield shape, dtype, ta, tb, (1, 20)[(i // 2) % 2], 'random'
-    # Cross the actual Cube dispatch threshold, including M/N tails and worker reuse.
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (1, 257, 513, 128), dtype, ta, tb, 20, 'random'
         yield (1, 1649, 257, 40), dtype, ta, tb, 20, 'negative'
-        # Two short-K windows: N crosses 1024, including a short tail window.
         yield (1, 256, 2048, 32), dtype, ta, tb, 20, 'random'
         yield (1, 256, 1031, 64), dtype, ta, tb, 1, 'negative'
-    # Short-K A cache holds at most 128 rows. 129 rows must reload A per N tile.
-    # N=65 crosses both tile widths; K=64 stays below the new Cube work gate.
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (1, 128, 65, 64), dtype, ta, tb, 1, 'random'
         yield (1, 129, 65, 64), dtype, ta, tb, 1, 'random'
@@ -146,24 +132,23 @@ def cube_finish_cases():
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (1, 1649, 257, 40), dtype, ta, tb, 20, 'm-cancellation'
         yield (1, 8191, 257, 40), dtype, ta, tb, 20, 'm-magnitude'
-        # One core reuses Finish's UB across batches, with different row values.
         yield (3, 8192, 257, 40), dtype, ta, tb, 1, 'm-cancellation'
 
 
 def short_cube_cases():
-    """Short Cube coverage, N partitions, request windows and dispatch edges."""
+    """Short-K boundaries, N partitions and task reuse."""
     definitions = [
-        ((1, 32, 256, 128), 'random'),   # Exactly 2^20; now Cube.
-        ((1, 32, 255, 128), 'negative'), # Just below the work gate; Vector.
-        ((1, 16, 512, 128), 'negative'), # Half of one base-M tile is valid.
-        ((1, 15, 1025, 128), 'random'),  # M gate keeps this on Vector.
-        ((1, 513, 63, 40), 'negative'),  # N gate keeps this on Vector.
-        ((1, 32, 4097, 32), 'random'),   # One worker spans several 1024 windows.
-        ((1, 33, 2049, 40), 'negative'), # Both M/N tails, uneven N partitions.
+        ((1, 32, 256, 128), 'random'),
+        ((1, 32, 255, 128), 'negative'),
+        ((1, 16, 512, 128), 'negative'),
+        ((1, 15, 1025, 128), 'random'),
+        ((1, 513, 63, 40), 'negative'),
+        ((1, 32, 4097, 32), 'random'),
+        ((1, 33, 2049, 40), 'negative'),
         ((1, 64, 513, 128), 'close-max'),
-        ((8, 16, 65, 128), 'random'),    # Aggregate batch work crosses the gate.
-        ((3, 65, 257, 40), 'random'),    # Uneven batch/M task count.
-        ((1, 32, 1025, 32), 'partition'), # Different rows win in different N groups.
+        ((8, 16, 65, 128), 'random'),
+        ((3, 65, 257, 40), 'random'),
+        ((1, 32, 1025, 32), 'partition'),
         ((3, 129, 257, 40), 'm-cancellation'),
     ]
     for (shape, mode), dtype, ta, tb, cores in itertools.product(
@@ -172,23 +157,18 @@ def short_cube_cases():
 
 
 def long_cube_cases():
-    """Cross long-K dispatch, panel windows, reuse and compensation."""
+    """Long-K tails, task reuse, mixed magnitudes and cancellation."""
     definitions = [((1, 65, 129, 8192), mode) for mode in
                    ('k-cancellation', 'mixed-magnitude', 'close-max', 'block-cancellation')]
     definitions += [((4, 65, 129, 256), 'random'), ((8, 33, 129, 392), 'random'),
-                    # One core owns every 64-column tile of this N, including the K compensation.
                     ((1, 64, 512, 256), 'k-cancellation'),
                     ((1, 64, 520, 256), 'negative'),
                     ((1, 65, 129, 1024), 'random'), ((1, 33, 129, 8192), 'random'),
                     ((4, 65, 129, 392), 'negative'),
-                    # (1, 16, 64, 4096) is the long-K Cube product edge, exactly 2^22.
-                    # (1, 16, 80, 392) stays on Vector; its product is below that edge.
                     ((1, 16, 64, 4096), 'k-cancellation'), ((1, 16, 80, 392), 'negative')]
     for i, ((shape, mode), dtype, ta, tb) in enumerate(itertools.product(
             definitions, (1, 2), (False, True), (False, True))):
         yield shape, dtype, ta, tb, (1, 20)[i % 2], mode
-    # At one core these cover 128/256-column windows, multiple windows, short
-    # windows and strided C reads. At 20 cores N partitions may keep width 64.
     windows = [((1, 64, 129, 512), 'random'),
                ((1, 64, 257, 256), 'close-max'),
                ((1, 64, 385, 256), 'negative'),
@@ -198,21 +178,12 @@ def long_cube_cases():
     for (shape, mode), dtype, ta, tb, cores in itertools.product(
             windows, (1, 2), (False, True), (False, True), (1, 20)):
         yield shape, dtype, ta, tb, cores, mode
-    # All 64 K panels inside a wide request; cancellation remains inside a
-    # hypothetical 512-K panel, so widening N must not widen Cube accumulation K.
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (1, 65, 257, 8192), dtype, ta, tb, 1, 'block-cancellation'
-        # Forty resident tasks at 20 cores each own four base-N tiles. Covers
-        # the 256-column batch path at production parallelism, including M tail.
         yield (1, 257, 2048, 136), dtype, ta, tb, 20, 'random'
     for dtype, ta, tb, cores in itertools.product((1, 2), (False, True), (False, True), (1, 20)):
-        # Both narrow and wide windows: a 2^30 panel, a 2^-5 panel,
-        # and a -2^30 panel. Kahan loses the small panel in FP32.
         yield (1, 65, 129, 512), dtype, ta, tb, cores, 'panel-magnitude'
-        # Multiple windows, uneven rows/columns and a final short K panel.
         yield (1, 65, 513, 520), dtype, ta, tb, cores, 'panel-magnitude-negative'
-    # Even outer batches can split into odd L1 groups: 10/20 panels at N=256,
-    # 14/18 panels at N=128. The SDK split must not drop a group's final panel.
     for shape, dtype, ta, tb, cores in itertools.product(
             ((1, 65, 513, 1160), (1, 65, 257, 2560),
              (1, 65, 129, 1792), (1, 65, 129, 2304)),
@@ -333,8 +304,7 @@ def main():
             payload += struct.pack('<9I', *shape, dtype, ta, tb, cores, index % 2)
             payload += physical_a.tobytes(order='C') + physical_b.tobytes(order='C')
             expected.append(golden)
-        # LeakSanitizer cannot run under this sandbox's ptrace supervision.
-        # AddressSanitizer and UBSan remain enabled.
+        # LSan cannot run under ptrace; ASan and UBSan remain enabled.
         env = dict(os.environ)
         env['ASAN_OPTIONS'] = env.get('ASAN_OPTIONS', '') + ':detect_leaks=0'
         result = subprocess.run([str(executable)], input=payload, capture_output=True, env=env)

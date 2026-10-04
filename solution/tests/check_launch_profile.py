@@ -4,14 +4,12 @@ import math
 from pathlib import Path
 
 
-def records(path, allow_historical=False):
+def records(path):
     with Path(path).open() as source:
         rows = list(csv.DictReader(source))
     if not rows:
         raise ValueError('empty kernel profile')
     names = ('fused_kernel', 'bmmms_small_kernel', 'bmmms_dot_kernel')
-    if allow_historical:
-        names += ('Baseline', 'Fused')
     for row in rows:
         if not any(name in row['Op Name'] for name in names):
             raise ValueError('unexpected kernel in profile: ' + row['Op Name'])
@@ -24,14 +22,13 @@ def records(path, allow_historical=False):
 
 
 def dispatch(shape):
-    """Native Cube handles every matrix; M=N=1 uses the Vector dot kernel."""
+    """Map the three shape-based dispatches to their device kernel names."""
     _, m, n, k = shape
     if m == n == 1:
         return 'bmmms_dot_kernel'
     if k <= 128 and m <= 32 and n <= 32:
         return 'bmmms_small_kernel'
     return 'fused_kernel'
-
 
 
 def verify(path, metadata, repeats):

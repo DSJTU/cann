@@ -28,16 +28,10 @@ struct TensorGroupInfo { const TensorInfo* tensors; int64_t numTensors; };
 using aclError = int;
 constexpr aclError ACL_SUCCESS = 0;
 constexpr int ACL_MEM_MALLOC_HUGE_FIRST = 0;
-using aclmdlRI = void*;
-using aclrtCallback = void (*)(void*);
-enum aclmdlRICaptureStatus { ACL_MODEL_RI_CAPTURE_STATUS_NONE, ACL_MODEL_RI_CAPTURE_STATUS_ACTIVE };
 aclError aclrtMalloc(void**, size_t, int);
 aclError aclrtFree(void*);
 aclError aclrtGetCurrentContext(aclrtContext*);
 aclError aclrtSynchronizeStream(aclrtStream);
-aclError aclrtSynchronizeStreamWithTimeout(aclrtStream, int);
-aclError aclmdlRICaptureGetInfo(aclrtStream, aclmdlRICaptureStatus*, aclmdlRI*);
-aclError aclmdlRIDestroyRegisterCallback(aclmdlRI, aclrtCallback, void*);
 namespace AscendC { namespace tiling { struct TCubeTiling { uint32_t baseM, baseN; }; } }
 namespace platform_ascendc {
 struct PlatformAscendC { size_t GetLibApiWorkSpaceSize() const; uint32_t GetCoreNumAic() const; };
@@ -58,14 +52,8 @@ struct MatmulApiTiling {
     void SetBias(bool);
     void SetFixSplit(uint32_t, uint32_t, int);
     void SetBufferSpace(int, int, int);
-    int SetBatchInfoForNormal(int32_t, int32_t, int32_t, int32_t, int32_t);
     int GetTiling(AscendC::tiling::TCubeTiling&);
 };
-}
-enum class BatchMode { BATCH_LESS_THAN_L1 = 0, BATCH_LARGE_THAN_L1 = 1, SINGLE_LARGE_THAN_L1 = 2 };
-struct MatmulConfig { int batchMode; };
-constexpr MatmulConfig GetNormalConfig(bool, bool, bool, BatchMode mode) {
-    return MatmulConfig{int(mode)};
 }
 '''
 

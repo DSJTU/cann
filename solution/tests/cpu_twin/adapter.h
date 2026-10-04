@@ -45,21 +45,12 @@ void TwinLaunch(KernelMode mode, const char* name, F function, uint32_t blocks, 
 }
 
 // Host runtime behavior remains a separate NPU test. These adapters provide
-// shared GM for the unchanged kernel bodies, and explicitly reject capture.
+// shared GM for the unchanged kernel bodies; capture is tested on the NPU.
 inline aclError TwinMalloc(void** memory, size_t bytes, aclrtMemMallocPolicy) {
     *memory = AscendC::GmAlloc(bytes);
     return *memory ? ACL_SUCCESS : ACL_ERROR_BAD_ALLOC;
 }
 inline aclError TwinFree(void* memory) { AscendC::GmFree(memory); return ACL_SUCCESS; }
-inline aclError TwinSync(aclrtStream, int32_t) { return ACL_SUCCESS; }
-inline aclError TwinCaptureInfo(aclrtStream, aclmdlRICaptureStatus* status, aclmdlRI* model) {
-    *status = ACL_MODEL_RI_CAPTURE_STATUS_NONE;
-    *model = nullptr;
-    return ACL_SUCCESS;
-}
-inline aclError TwinRejectCapture(aclmdlRI, aclrtCallback, void*) {
-    throw std::runtime_error("CPU Twin runner does not support graph capture");
-}
 inline aclError TwinContext(aclrtContext* context) {
     *context = reinterpret_cast<void*>(1); return ACL_SUCCESS;
 }
@@ -68,6 +59,3 @@ inline aclError TwinSyncStream(aclrtStream) { return ACL_SUCCESS; }
 #define aclrtSynchronizeStream TwinSyncStream
 #define aclrtMalloc TwinMalloc
 #define aclrtFree TwinFree
-#define aclrtSynchronizeStreamWithTimeout TwinSync
-#define aclmdlRICaptureGetInfo TwinCaptureInfo
-#define aclmdlRIDestroyRegisterCallback TwinRejectCapture

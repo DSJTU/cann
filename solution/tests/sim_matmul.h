@@ -1,4 +1,4 @@
-// Synchronous mathematical model for layout, packing and bounds checks.
+// Synchronous mathematical model for layout and bounds checks.
 // FP64 dot products do not model Cube precision, pipelines or graph lifetime.
 #pragma once
 #include <atomic>
@@ -7,13 +7,6 @@
 using aclError = int;
 constexpr aclError ACL_SUCCESS = 0;
 constexpr int ACL_MEM_MALLOC_HUGE_FIRST = 0;
-using aclmdlRI = void*;
-using aclrtCallback = void (*)(void*);
-enum aclmdlRICaptureStatus {
-    ACL_MODEL_RI_CAPTURE_STATUS_NONE,
-    ACL_MODEL_RI_CAPTURE_STATUS_ACTIVE,
-    ACL_MODEL_RI_CAPTURE_STATUS_INVALIDATED
-};
 inline aclError aclrtMalloc(void** ptr, size_t size, int) {
     *ptr = std::malloc(size);
     return *ptr ? ACL_SUCCESS : 1;
@@ -21,13 +14,6 @@ inline aclError aclrtMalloc(void** ptr, size_t size, int) {
 inline aclError aclrtFree(void* ptr) { std::free(ptr); return ACL_SUCCESS; }
 inline aclError aclrtGetCurrentContext(aclrtContext* c) { *c = reinterpret_cast<void*>(1); return ACL_SUCCESS; }
 inline aclError aclrtSynchronizeStream(aclrtStream) { return ACL_SUCCESS; }
-inline aclError aclrtSynchronizeStreamWithTimeout(aclrtStream, int) { return ACL_SUCCESS; }
-inline aclError aclmdlRICaptureGetInfo(aclrtStream, aclmdlRICaptureStatus* status, aclmdlRI* model) {
-    *status = ACL_MODEL_RI_CAPTURE_STATUS_NONE; *model = nullptr; return ACL_SUCCESS;
-}
-inline aclError aclmdlRIDestroyRegisterCallback(aclmdlRI, aclrtCallback, void*) {
-    throw std::runtime_error("graph ownership is not modeled by the CPU test");
-}
 namespace bmmms_sim {
 inline std::atomic<uint64_t> &MatmulRequests() { static std::atomic<uint64_t> value{0}; return value; }
 inline std::atomic<uint64_t> &MatmulTiles() { static std::atomic<uint64_t> value{0}; return value; }
@@ -36,7 +22,6 @@ enum class CubeFormat { ND };
 namespace AscendC { namespace tiling {
 struct TCubeTiling {
     uint32_t baseM = 32, baseN = 64, orgM = 0, orgN = 0, orgK = 0;
-    uint32_t batchA = 0, batchB = 0, singleCoreM = 0, singleCoreN = 0, singleCoreK = 0;
 };
 }}
 namespace AscendC {
@@ -64,56 +49,37 @@ public:
     int SetBType(TPosition, CubeFormat, DataType, bool) { return 0; }
     void SetCType(TPosition, CubeFormat, DataType) {}
     void SetBiasType(TPosition, CubeFormat, DataType) {}
-    void SetShape(uint32_t m, uint32_t n, uint32_t k) { tiling.singleCoreM=m; tiling.singleCoreN=n; tiling.singleCoreK=k; }
+    void SetShape(uint32_t, uint32_t, uint32_t) {}
     void SetOrgShape(uint32_t m, uint32_t n, uint32_t k) { tiling.orgM=m; tiling.orgN=n; tiling.orgK=k; }
     void SetBias(bool) {}
     void SetFixSplit(uint32_t m, uint32_t n, int) { tiling.baseM=m; tiling.baseN=n; }
     void SetBufferSpace(int,int,int) {}
-    int SetBatchInfoForNormal(int32_t batchA, int32_t batchB, int32_t m, int32_t n, int32_t k) {
-        if (batchA < 1 || batchB < 1 || m < 1 || n < 1 || k < 1) return -1;
-        tiling.batchA=uint32_t(batchA); tiling.batchB=uint32_t(batchB);
-        tiling.singleCoreM=uint32_t(m); tiling.singleCoreN=uint32_t(n); tiling.singleCoreK=uint32_t(k);
-        return 0;
-    }
     int GetTiling(AscendC::tiling::TCubeTiling& output) const { output=tiling; return 0; }
 };
 }
-// CANN declares these in the global namespace. matmul:: holds Matmul and MatmulType.
-enum class BatchMode { BATCH_LESS_THAN_L1 = 0, BATCH_LARGE_THAN_L1 = 1, SINGLE_LARGE_THAN_L1 = 2 };
-enum class LayoutMode { NONE = 0, BSNGD = 1, SBNGD = 2, BNGS1S2 = 3, NORMAL = 4 };
-struct MatmulConfig { int batchMode = 0; };
-constexpr MatmulConfig GetNormalConfig(bool = false, bool = false, bool = false,
-    BatchMode mode = BatchMode::BATCH_LESS_THAN_L1) {
-    return MatmulConfig{int(mode)};
-}
 namespace matmul {
-inline constexpr MatmulConfig kDefaultConfig = GetNormalConfig();
-template <AscendC::TPosition POSITION, CubeFormat FORMAT, typename TYPE, bool ISTRANS = false,
-    LayoutMode LAYOUT = LayoutMode::NONE>
-struct MatmulType { using T = TYPE; static constexpr bool isTrans = ISTRANS; static constexpr LayoutMode layout = LAYOUT; };
-template <typename A, typename B, typename C, typename Bias, const MatmulConfig& CFG = kDefaultConfig>
+template <AscendC::TPosition POSITION, CubeFormat FORMAT, typename TYPE, bool ISTRANS = false>
+struct MatmulType { using T = TYPE; static constexpr bool isTrans = ISTRANS; };
+template <typename A, typename B, typename C, typename Bias>
 class Matmul {
     AscendC::GlobalTensor<typename A::T> a;
     AscendC::GlobalTensor<typename B::T> b;
     uint32_t orgM=0, orgN=0, orgK=0, m=0, n=0, k=0, baseM=0, baseN=0, tile=0;
-    uint32_t singleM=0, singleN=0, singleK=0;
     bool ta=false, tb=false, done=true, pending=false;
 public:
     void Init(const AscendC::tiling::TCubeTiling* t) {
         orgM=t->orgM; orgN=t->orgN; orgK=t->orgK; baseM=t->baseM; baseN=t->baseN;
-        singleM=t->singleCoreM; singleN=t->singleCoreN; singleK=t->singleCoreK;
     }
     void SetOrgShape(uint32_t om, uint32_t on, uint32_t ok) { orgM=om; orgN=on; orgK=ok; }
-    // singleM stays within one base row tile. singleN may cover several base
+    // M stays within one base row tile. N may cover several base
     // column tiles; Iterate yields them from N=0 toward the tail.
-    void SetSingleShape(uint32_t sm, uint32_t sn, uint32_t sk) {
+    void SetTail(uint32_t sm, uint32_t sn, uint32_t sk) {
         if (pending || !done) throw std::runtime_error("Matmul request is still open");
         if (!sm || !sn || !sk || !baseM || !baseN || sm>baseM || sk>orgK)
             throw std::runtime_error("CPU Matmul single shape exceeds one M tile or full K");
         m=sm; n=sn; k=sk; tile=0; pending=false; done=false;
         bmmms_sim::MatmulRequests().fetch_add(1, std::memory_order_relaxed);
     }
-    void SetTail(uint32_t sm, uint32_t sn, uint32_t sk) { SetSingleShape(sm, sn, sk); }
     void SetTensorA(AscendC::GlobalTensor<typename A::T> input, bool trans) {
         if (trans && !A::isTrans) throw std::runtime_error("MatmulType must enable A transpose");
         a=input; ta=trans;
@@ -148,40 +114,6 @@ public:
         if (tile * baseN >= n) done=true;
     }
     void End() const { if (pending || !done) throw std::runtime_error("Matmul result was not consumed"); }
-    // One call covers every K panel. Each panel is a contiguous ND matrix of
-    // singleCoreM x singleCoreK and singleCoreK x singleCoreN, separated by the
-    // element strides. Non-sequential C is row-major singleCoreM x singleCoreN.
-    // Sequential output is only modeled when each panel fits one base tile.
-    void IterateBatch(AscendC::GlobalTensor<float> output, uint32_t batchA, uint32_t batchB,
-                      bool sequential, uint32_t strideA, uint32_t strideB, uint32_t strideC = 0) {
-        if (pending || !done) throw std::runtime_error("Matmul request is still open");
-        if (!batchA || batchA != batchB || !singleM || !singleN || !singleK)
-            throw std::runtime_error("CPU IterateBatch expects equal batches and explicit panel shape");
-        if (sequential && (singleM > baseM || singleN > baseN))
-            throw std::runtime_error("CPU IterateBatch does not model sequential multi-tile output");
-        // CANN reserves matrixStrideC=0; NORMAL writes contiguous M*N matrices.
-        if (!strideC) strideC = singleM * singleN;
-        if (strideA < singleM * singleK || strideB < singleK * singleN || strideC < singleM * singleN)
-            throw std::runtime_error("CPU IterateBatch stride is shorter than one panel");
-        for (uint32_t panel = 0; panel < batchA; ++panel) {
-            for (uint32_t row = 0; row < singleM; ++row) {
-                for (uint32_t col = 0; col < singleN; ++col) {
-                    double value = 0;
-                    for (uint32_t kk = 0; kk < singleK; ++kk) {
-                        const auto av = a.GetValue(ta ? panel * strideA + kk * singleM + row
-                                                      : panel * strideA + row * singleK + kk);
-                        const auto bv = b.GetValue(tb ? panel * strideB + col * singleK + kk
-                                                      : panel * strideB + kk * singleN + col);
-                        value += double(float(av)) * double(float(bv));
-                    }
-                    output.SetValue(panel * strideC + row * singleN + col, float(value));
-                }
-            }
-        }
-        bmmms_sim::MatmulRequests().fetch_add(1, std::memory_order_relaxed);
-        bmmms_sim::MatmulTiles().fetch_add(uint64_t(batchA) * ((singleM + baseM - 1) / baseM) *
-            ((singleN + baseN - 1) / baseN), std::memory_order_relaxed);
-    }
 };
 }
 #define REGIST_MATMUL_OBJ(pipe, workspace, object, tiling) object.Init(tiling)

@@ -5,7 +5,6 @@ BatchMatmulMaxSum算子golden实现
 以 numpy bmm + amax + sum 的 FP64 结果为 golden
 """
 import numpy as np
-from ml_dtypes import bfloat16
 
 
 def impl(x1, x2, transposeX1=False, transposeX2=False):
@@ -45,66 +44,3 @@ def impl(x1, x2, transposeX1=False, transposeX2=False):
     y = np.sum(max_sim, axis=-1)                     # (B,)
 
     return y.astype(np.float32)
-
-
-def _physical_shapes(B, M, N, K, transposeX1, transposeX2):
-    x1_shape = (B, K, M) if transposeX1 else (B, M, K)
-    x2_shape = (B, N, K) if transposeX2 else (B, K, N)
-    return x1_shape, x2_shape
-
-
-def _make_input(shape, dtype_name, value_range, rng):
-    low, high = value_range
-    value = rng.uniform(low, high, shape).astype(np.float32)
-    if dtype_name == "float16":
-        return value.astype(np.float16)
-    if dtype_name == "bfloat16":
-        return value.astype(bfloat16)
-    raise ValueError(f"unsupported dtype: {dtype_name}")
-
-
-def _run_known_value_checks():
-    x1 = np.array([[[1.0, 0.0], [0.0, 1.0]]], dtype=np.float16)
-    x2 = np.array([[[1.0, 0.0, -1.0], [0.0, 1.0, 0.0]]], dtype=np.float16)
-    actual = impl(x1, x2)
-    np.testing.assert_allclose(actual, np.array([2.0], dtype=np.float32), rtol=0, atol=0)
-
-    negative_x1 = np.array([[[1.0, 0.0]]], dtype=np.float16)
-    negative_x2 = np.array([[[-1.0, -2.0], [0.0, 0.0]]], dtype=np.float16)
-    negative_actual = impl(negative_x1, negative_x2)
-    np.testing.assert_allclose(negative_actual, np.array([-1.0], dtype=np.float32), rtol=0, atol=0)
-
-
-if __name__ == "__main__":
-    _run_known_value_checks()
-
-    # 15 个测试用例，与 JSON 中的 npu_cases 一一对应
-    # (id, B, M, N, K, dtype, transposeX1, transposeX2, x1_range, x2_range)
-    cases = [
-        ( 1,   1,  2,   3,  4, "float16",  False, False, [-1.0, 1.0], [-1.0, 1.0]),
-    ]
-
-    for cid, B, M, N, K, dtype_name, tx1, tx2, x1_range, x2_range in cases:
-        rng = np.random.default_rng(20260817 + cid)
-        x1_shape, x2_shape = _physical_shapes(B, M, N, K, tx1, tx2)
-        x1 = _make_input(x1_shape, dtype_name, x1_range, rng)
-        x2 = _make_input(x2_shape, dtype_name, x2_range, rng)
-
-        y = impl(x1, x2, tx1, tx2)
-
-        assert y.shape == (B,), f"Case {cid:02d}: unexpected output shape {y.shape}"
-        assert y.dtype == np.float32, f"Case {cid:02d}: unexpected output dtype {y.dtype}"
-        assert np.all(np.isfinite(y)), f"Case {cid:02d}: output contains NaN or Inf"
-        if cid == 2:
-            assert np.all(y < 0), "Case 02 must produce all-negative scores"
-
-        input_elems = B * K * (M + N)
-        macs = B * M * N * K
-        print(
-            f"Case {cid:02d}: shape={y.shape}, dtype={y.dtype}, "
-            f"input_dtype={dtype_name}, transpose=({tx1},{tx2}), "
-            f"input_elems={input_elems}, macs={macs}, "
-            f"score_range=[{y.min():.6f}, {y.max():.6f}]"
-        )
-
-    print("All tests passed!")

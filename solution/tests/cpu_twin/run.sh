@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -eo pipefail
 task_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
-task_sdk=${BMMMS_CANN_ROOT:-"$task_root/.private/toolchains/cann-9.0/sdk/cann"}
-task_python=${BMMMS_TWIN_PYTHON:-"$task_root/.private/toolchains/cann-9.0/venv/bin/python"}
+task_sdk=${BMMMS_CANN_ROOT:-${ASCEND_HOME_PATH:-}}
+task_python=$(command -v "${BMMMS_TWIN_PYTHON:-python3}")
 if [[ ! -f "$task_sdk/set_env.sh" || ! -x "$task_python" ]]; then
     echo 'Set BMMMS_CANN_ROOT and BMMMS_TWIN_PYTHON to the local SDK and Python environment.' >&2
     exit 1
@@ -16,13 +16,14 @@ while [[ $# -gt 0 ]]; do
         --suite) task_suite=$2; shift 2 ;;
         --case) task_case=(--case "$2"); shift 2 ;;
         --gdb) task_debug=1; shift ;;
-        *) echo "Usage: $0 [--suite smoke|small-matrix|short-cube|long-cube|long-precision|long-batches|all] [--case INDEX] [--gdb]" >&2; exit 1 ;;
+        *) echo "Usage: $0 [--suite smoke|small-matrix|short-cube|long-cube|long-precision|all] [--case INDEX] [--gdb]" >&2; exit 1 ;;
     esac
 done
-task_work="$task_root/.private/cpu-twin"
+task_work=${BMMMS_TWIN_WORK:-"$task_root/.private/runtime/cpu-twin"}
+mkdir -p "$task_work"
+task_work=$(cd "$task_work" && pwd)
 mkdir -p "$task_work/run"
 task_compiler=${CXX:-g++}
-if [[ -z ${CXX:-} ]] && command -v g++-15 >/dev/null; then task_compiler=g++-15; fi
 task_compiler=$(command -v "$task_compiler")
 cmake -S "$task_root/solution/tests/cpu_twin" -B "$task_work/build" \
     -DCMAKE_CXX_COMPILER="$task_compiler" -DPython3_EXECUTABLE="$task_python" -DCANN_ROOT="$task_sdk" \
