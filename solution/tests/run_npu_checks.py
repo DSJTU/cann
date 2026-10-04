@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 import subprocess
 
-from check_launch_profile import host_buffers
+from check_launch_profile import dispatch
 
 
 def main():
@@ -20,6 +20,9 @@ def main():
     parser.add_argument('--build', type=Path, default=Path('build-npu'))
     parser.add_argument('--runs', type=Path, default=Path('runs/hybrid'))
     parser.add_argument('--large-prefix', type=Path)
+    parser.add_argument('--suites', nargs='+', default=['correctness','extended','performance','short-cube','long-cube'])
+    parser.add_argument('--modes', nargs='+', choices=('ordinary','capture-cold','capture-chain','capture-streams'),
+                        default=['ordinary','capture-cold','capture-chain','capture-streams'])
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     build, runs = args.build.resolve(), args.runs.resolve()
@@ -58,20 +61,16 @@ def main():
                 raise RuntimeError(name+' needs BMMMS_TRACE_RUNTIME=ON')
             allocated, freed, error = map(int,summaries[0])
             metadata = json.loads(prefix.with_suffix('.json').read_text())
-            buffers = [host_buffers(v['shape']) for v in metadata]
-            cubes = sum(count > 0 for count in buffers)
-            calls = {'--capture-cold': 1, '--capture-chain': 4,
-                     '--capture-streams': 2, '--streams': 4, '--benchmark': 12,
-                     '--profile-five': 5}.get(mode, 2)
-            registrations = len(re.findall(r'^INTERNAL_REGISTER ret=0$',log,re.M))
-            syncs = len(re.findall(r'^INTERNAL_SYNC ret=0$',log,re.M))
-            expected_registers = cubes*(2 if mode == '--capture-streams' else 1) if mode and mode.startswith('--capture') else 0
-            expected_syncs = cubes if mode == '--capture-chain' else 0 if mode and mode.startswith('--capture') else cubes*calls
-            if (allocated != sum(buffers)*calls or freed != allocated or error or
-                    registrations != expected_registers or syncs != expected_syncs):
-                raise RuntimeError(name+' resource counts or runtime status differ from expected ownership')
-            result['resources'][name] = dict(cube_cases=cubes,host_buffers=sum(buffers),allocations=allocated,frees=freed,
-                                            registrations=registrations,ordinary_synchronizations=syncs,error=error)
+            cubes = sum(dispatch(v['shape']) == 'fused_kernel' for v in metadata)
+            registrations = len(re.findall(r'^INTERNAL_REGISTER ret=0$', log, re.M))
+            release_syncs = len(re.findall(r'^INTERNAL_RELEASE_SYNC ret=0$', log, re.M))
+            if freed != allocated or error or registrations or release_syncs != allocated:
+                raise RuntimeError(name+' scratch cache was not fully released or an internal ACL call failed')
+            if (cubes > 0) != (allocated > 0):
+                raise RuntimeError(name+' unexpected scratch-cache allocation')
+            result['resources'][name] = dict(cube_cases=cubes, allocations=allocated, frees=freed,
+                                            registrations=registrations, release_synchronizations=release_syncs,
+                                            error=error)
         run(name+'-verify',['python3',root/'tests/npu_data.py','--prefix',prefix,'--verify',output])
         report = json.loads(output.with_suffix('.report.json').read_text())
         count = len(json.loads(prefix.with_suffix('.json').read_text()))
@@ -81,16 +80,18 @@ def main():
         save()
 
     try:
-        for suite in ('correctness','extended','performance','short-cube','long-cube'):
+        for suite in args.suites:
             prefix = data/suite
             run('generate-'+suite,['python3',root/'tests/npu_data.py','--suite',suite,'--prefix',prefix])
-            for mode in (None,'--capture-cold','--capture-chain','--capture-streams'):
+            for selected_mode in args.modes:
+                mode = None if selected_mode == 'ordinary' else '--'+selected_mode
                 check(suite+'-'+(mode or 'ordinary').removeprefix('--'),prefix,mode)
             check(suite+'-cold-shared',prefix,'--capture-cold',True)
         if args.large_prefix:
             prefix = args.large_prefix.resolve()
             result['large_input_sha256'] = hashlib.sha256(prefix.with_suffix('.bin').read_bytes()).hexdigest()
-            for mode in (None,'--capture-cold','--capture-chain','--capture-streams'):
+            for selected_mode in args.modes:
+                mode = None if selected_mode == 'ordinary' else '--'+selected_mode
                 check('large-'+(mode or 'ordinary').removeprefix('--'),prefix,mode)
             check('large-cold-shared',prefix,'--capture-cold',True)
             check('large-benchmark',prefix,'--benchmark')

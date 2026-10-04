@@ -40,13 +40,15 @@ Matmul 的输入类型 `MatmulType<POSITION, FORMAT, TYPE, ISTRANS>` 默认不�
 
 ## 核内与核间同步
 
-长 K Cube 的性能和精度需分别验证。64×64 实验中，原生 full-K 在抵消和不同量级输入上失败；512-K 分段补偿也不能修复发生在单段内部的舍入损失。Cube 累加长度保持 128。长 K 把一个 64×(64/128/256) 窗口的每个 128 面板打包成连续 ND 矩阵，用一次 `IterateBatch`（NORMAL、`BATCH_LARGE_THAN_L1`）算出全部面板，再按 64/128 列读回并逐元素补偿，之后才取 64 列子块的 N 最大值。`MatmulConfig`、`GetNormalConfig`、`BatchMode`、`LayoutMode` 在目标头文件的全局命名空间；`matmul::` 只包 `Matmul` 和 `MatmulType`。短 K 仍是一次 `SetSingleShape` 最多 1024 列；`singleM` 不超过 `baseM` 时，Iterate 按 N 从左到右交回每个基本块，尾块按实际列数紧密排列。CPU 模型按打包后的面板和这个顺序模拟，并拒绝 `singleM` 大于 `baseM`。CPU Matmul 使用 FP64。此前面板批量和短 K 覆盖版本的赛事隐藏集有 15/15、错误占比 0% 的通过记录，逐点耗时不写入共用文档。此前版本的通过不能证明当前宽窗口的设备实现、精度或隐藏集结果；实际检查状态保存在本地 `.private`。本分支仍在开发。沿 M/N 分配独立任务能提高小 M、宽 N 的并行度；N 分区各写独立行最大值，再逐行合并 max 后求和 M，避免分配完整 B*M*N 得分矩阵。
+完整 K 与分段补偿是不同的性能/精度取舍。旧版使用 128-K 面板、打包和 TwoSum，已修复若干跨面板抵消用例，但有明显搬运、IPC 和补偿开销。当前重建使用原生 full-K，不再把 128 作为通用累加长度；硬件 FP32 累加仍会丢失强抵消输入的低位。必须保留精度诊断并如实记录结果，不能用 FP64 CPU Matmul 的通过替代硬件舍入验证。
 
-宽窗口的 `IterateBatch` 不能沿用单基本块的输出布局假设。GM 输出设置 `enSequentialWrite=false`，让每个基本块落在完整 `singleCoreM × singleCoreN` 矩阵内对应的位置；读回 64/128 列块时，GM 行间隙为 `(singleCoreN-foldColumns)*sizeof(float)`。`matrixStrideC` 是保留参数，保持默认 0；NORMAL 的面板矩阵大小由 tiling 定义。接口依据见 [CANN 9.0 IterateBatch](https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0642.html)。CPU 模型验证该 ND 寻址，不能证明设备端实现与舍入行为。
+原生 Cube 的转置模板参数与 Host tiling 必须一致。`singleCoreM` 不超过 `baseM` 时，Iterate 沿 N 交回每个基本块，Sequential ND 尾块使用实际列数的紧密行距。当前以 per-worker GM 得分块暂存，DataCopyPad 搬入 UB 时对齐行距，WholeReduceMax 的 mask 只包括有效 N。同步的直接 UB 输出曾在同输入真机比较中更慢，已撤回；减少 GM 搬运并不自动减少 Cube/Vector 通信开销。
 
-还需覆盖面板数量与 L1 批次拆分的组合。CANN 9.0 NORMAL `BATCH_LARGE_THAN_L1` 的内部 `BatchLoop` 可能把偶数总批次拆成奇数大小的 L1 主块，再按两个等长半块迭代，漏掉主块末尾的矩阵。A3 真机已在 10/14/18/20/42/50 个面板的宽窗口上复现，普通 FP64 CPU Matmul 模型不会暴露这个 SDK 问题。当前将 Matmul 批次数向上补为 2 的幂，让各级等分不会产生奇数主块；多余的 A/B 面板在每个 worker 首次使用前清零，最终补偿只读有效 K 面板。零面板跨 M/N 任务复用，不读取越界输入，也不改变有效 K 的归约顺序。补齐增加部分形状的 GM 空间与 Cube 工作量，最大 K=8192 时仍为 64 个面板；应同时检查补齐边界、短 K 尾块、重复调用、图捕获和真实单次 kernel 启动。
+分派和块大小要以实际 kernel profile 比较，不能从理论吞吐量推断。原生完整 K 路径中，短/中 K 的宽 N 块可以摊薄通信成本；长 K 小 M/N 则可能因为独立任务过少而闲置核。减少 M/N 块可增加并行度，也会增加请求和尾块成本，须在相同输入上测量。小矩阵的 Vector 路径一次缓存输入，用 K 并行乘法与树形归约避免 Cube server 的固定开销。
 
-跨 K 面板仅用 Kahan 仍会在合法的大小量级抵消中失败：A 全为 1024，B 的三个 128 元素面板分别为 8192、2^-22、-8192，单个点积应为 2^-5。原先实现把输出 2.03125 算成 0；官方 CPU Twin 和 A3 真机均已复现。长 K 使用一般 TwoSum 保留每次加法的残差，独立累计低位，全部 K 面板结束后合并高低位再取 N 最大值。它修复跨面板舍入损失，不消除 Cube 面板内部的所有舍入误差。打包结束且同步 IterateBatch 返回后，打包 UB 复用于 C 和 TwoSum 临时量；宽窗口每次折叠 128 列，两个 64 列子块共享一次读回。行间距对齐 8 个 FP32 时，WholeReduceMax 的有效列 mask 可处理非对齐尾列；仅行间距不对齐的紧密结果才需要逐行 Gather。
+M 求和的树形归约仍可能有抵消误差。当前 Finish 先计算普通和与绝对值和；结果绝对值小于绝对值和的 1% 时，按固定行序以 TwoSum 重算，跨两段 M 保留同一高/低状态。这个判断是性能与数值的工程取舍，不修复 K 点积内部丢失的低位。
+
+历史 IterateBatch 实验的约束仍值得保留：NORMAL `BATCH_LARGE_THAN_L1` 可能把偶数批次拆成奇数 L1 主块而漏掉主块末项，A3 曾在多种面板数上复现；补零到 2 的幂可以避开已测问题。非连续 GM 输出需使用完整 singleCoreN 行距，`matrixStrideC` 为保留参数。当前主路径不使用面板批量，不能继续按旧分派门槛或旧 kernel 名称验收。
 
 源码顺序不代表 Scalar、Vector、MTE2、MTE3 已完成。按生产者→消费者选 HardEvent，通过 TPipe 获取事件 ID，配对 SetFlag/WaitFlag；基线中的常见关系：
 
@@ -61,7 +63,7 @@ Matmul 的输入类型 `MatmulType<POSITION, FORMAT, TYPE, ISTRANS>` 默认不�
 
 先证明依赖再删屏障。CPU 中同步执行的算子模型无法发现所有真实异步流水问题。
 
-Matmul 的 `GetTensorC<true>` 并不替代消费者到 Scalar 的完成依赖。当前分块实现会在复用 C 的 UB 或 `End()` 前等待 V_S，让归约与最大值合并真正完成。缺失这项依赖曾使 M=8192 的重复调用改变 78 个行最大值；补上后相同数据的重复、大型回归与图捕获全部通过。
+Matmul 的 `GetTensorC<true>` 并不替代消费者到 Scalar 的完成依赖。直接 UB 输出实现需在复用 C 或 `End()` 前等待 V_S，让归约与最大值合并真正完成。缺失这项依赖曾使 M=8192 的重复调用改变 78 个行最大值；补上后相同数据的重复、大型回归与图捕获全部通过。
 
 硬件 SyncAll 要求所有参与核执行相同数量的屏障，逻辑核数不能超过可同时驻留的物理核数。带屏障的任务不应分时过量调度或放进不同核迭代次数不一致的循环。纯 Vector 硬同步使用 `__mix__(0,1)`；可能存在多 stream 并发时，batch 调度 `__schedmode__(1)` 有助于避免核间等待造成的死锁。参见 [SyncAll](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/910/API/ascendcopapi/docs/en/api/SIMD-API/basic_api/sync_control/inter_core_sync/SyncAll.md)、[调度修饰符](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/900/programug/Ascendcopdevg/atlas_ascendc_10_10053.html)。较新文档不能替代目标版本验证。
 

@@ -11,6 +11,7 @@
 #undef DT_FLOAT
 #undef DT_FLOAT16
 #undef DT_BF16
+#undef DT_BFLOAT16
 #include <new>
 #include <stdexcept>
 #include <tuple>
@@ -59,6 +60,12 @@ inline aclError TwinCaptureInfo(aclrtStream, aclmdlRICaptureStatus* status, aclm
 inline aclError TwinRejectCapture(aclmdlRI, aclrtCallback, void*) {
     throw std::runtime_error("CPU Twin runner does not support graph capture");
 }
+inline aclError TwinContext(aclrtContext* context) {
+    *context = reinterpret_cast<void*>(1); return ACL_SUCCESS;
+}
+inline aclError TwinSyncStream(aclrtStream) { return ACL_SUCCESS; }
+#define aclrtGetCurrentContext TwinContext
+#define aclrtSynchronizeStream TwinSyncStream
 #define aclrtMalloc TwinMalloc
 #define aclrtFree TwinFree
 #define aclrtSynchronizeStreamWithTimeout TwinSync

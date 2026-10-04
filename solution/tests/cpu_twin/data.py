@@ -12,6 +12,7 @@ import npu_data
 def fixtures(suite):
     shapes = {
         'smoke': [(1, 1, 1, 32), (2, 17, 19, 40)],
+        'small-matrix': [(3, 31, 32, 128), (2, 32, 31, 72), (64, 3, 2, 32)],
         'short-cube': [(1, 64, 128, 128)],
         'long-cube': [(1, 257, 129, 136), (1, 65, 512, 136)],
     }
@@ -38,7 +39,7 @@ def batch_fixtures():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', choices=('smoke', 'short-cube', 'long-cube', 'long-precision', 'long-batches', 'all'), default='smoke')
+    parser.add_argument('--suite', choices=('smoke', 'small-matrix', 'short-cube', 'long-cube', 'long-precision', 'long-batches', 'all'), default='smoke')
     parser.add_argument('--case', type=int, help='select one case for a GDB session')
     parser.add_argument('--prefix', required=True)
     args = parser.parse_args()

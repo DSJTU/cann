@@ -11,9 +11,20 @@ from test_cpu import cases, extended_cases, performance_cases, cube_finish_cases
 
 
 def specs(suite):
+    if suite == 'native':
+        # Current Cube/Vector boundaries, full-K tails and multi-chunk Finish.
+        shapes = ((3, 31, 32, 128), (2, 32, 31, 72), (64, 3, 2, 32),
+                  (1, 65, 513, 520), (1, 65, 129, 8192), (1, 8192, 257, 40))
+        for shape, dtype, ta, tb in itertools.product(shapes, (1, 2), (False, True), (False, True)):
+            yield shape, dtype, ta, tb, 0, 'random'
+        for mode in ('negative', 'zero'):
+            yield (2, 32, 31, 72), 2, True, True, 1, mode
+        for mode in ('m-magnitude', 'm-cancellation'):
+            yield (1, 8191, 257, 40), 2, True, True, 0, mode
+        yield (1, 1, 1, 8192), 1, False, False, 0, 'random'
+        return
     if suite == 'launch-rule':
-        # Six Cube and nine Vector inputs: a two-launch Cube path produces
-        # 105 records over five iterations, instead of the required 75.
+        # Cover all current dispatches and exactly one task per iteration.
         # These are our diagnostic inputs, not the unknown contest shapes.
         shapes = [(1, 65, 129, 1024), (4, 65, 129, 256), (1, 33, 129, 8192),
                   (1, 256, 512, 128), (1, 513, 257, 128), (1, 1649, 257, 40),
@@ -126,7 +137,7 @@ def verify(prefix, output):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', choices=('smoke', 'correctness', 'extended', 'performance', 'cube-finish', 'short-cube', 'long-cube', 'launch-rule', 'precision', 'benchmark', 'large-short-k', 'stress'), default='smoke')
+    parser.add_argument('--suite', choices=('native', 'smoke', 'correctness', 'extended', 'performance', 'cube-finish', 'short-cube', 'long-cube', 'launch-rule', 'precision', 'benchmark', 'large-short-k', 'stress'), default='smoke')
     parser.add_argument('--prefix', required=True)
     parser.add_argument('--verify', help='verify device output instead of generating inputs')
     args = parser.parse_args()

@@ -19,6 +19,8 @@ inline aclError aclrtMalloc(void** ptr, size_t size, int) {
     return *ptr ? ACL_SUCCESS : 1;
 }
 inline aclError aclrtFree(void* ptr) { std::free(ptr); return ACL_SUCCESS; }
+inline aclError aclrtGetCurrentContext(aclrtContext* c) { *c = reinterpret_cast<void*>(1); return ACL_SUCCESS; }
+inline aclError aclrtSynchronizeStream(aclrtStream) { return ACL_SUCCESS; }
 inline aclError aclrtSynchronizeStreamWithTimeout(aclrtStream, int) { return ACL_SUCCESS; }
 inline aclError aclmdlRICaptureGetInfo(aclrtStream, aclmdlRICaptureStatus* status, aclmdlRI* model) {
     *status = ACL_MODEL_RI_CAPTURE_STATUS_NONE; *model = nullptr; return ACL_SUCCESS;
@@ -45,7 +47,7 @@ inline void Max(LocalTensor<float> dst, LocalTensor<float> a, LocalTensor<float>
 }
 inline void* GetSysWorkSpacePtr() { return nullptr; }
 namespace platform_ascendc {
-struct PlatformAscendC { size_t GetLibApiWorkSpaceSize() const { return 64; } };
+struct PlatformAscendC { size_t GetLibApiWorkSpaceSize() const { return 64; } uint32_t GetCoreNumAic() const { return 20; } };
 struct PlatformAscendCManager {
     static PlatformAscendC* GetInstance(const char*) { static PlatformAscendC platform; return &platform; }
 };
@@ -53,15 +55,16 @@ struct PlatformAscendCManager {
 namespace matmul_tiling {
 enum class TPosition { GM, LCM };
 using CubeFormat = ::CubeFormat;
-enum class DataType { DT_FLOAT16, DT_BF16, DT_FLOAT };
+enum class DataType { DT_FLOAT16, DT_BF16, DT_BFLOAT16 = DT_BF16, DT_FLOAT };
 class MatmulApiTiling {
     AscendC::tiling::TCubeTiling tiling;
 public:
     explicit MatmulApiTiling(const platform_ascendc::PlatformAscendC&) {}
-    void SetAType(TPosition, CubeFormat, DataType, bool) {}
-    void SetBType(TPosition, CubeFormat, DataType, bool) {}
+    int SetAType(TPosition, CubeFormat, DataType, bool) { return 0; }
+    int SetBType(TPosition, CubeFormat, DataType, bool) { return 0; }
     void SetCType(TPosition, CubeFormat, DataType) {}
-    void SetShape(uint32_t m, uint32_t n, uint32_t) { tiling.baseM=m; tiling.baseN=n; }
+    void SetBiasType(TPosition, CubeFormat, DataType) {}
+    void SetShape(uint32_t m, uint32_t n, uint32_t k) { tiling.singleCoreM=m; tiling.singleCoreN=n; tiling.singleCoreK=k; }
     void SetOrgShape(uint32_t m, uint32_t n, uint32_t k) { tiling.orgM=m; tiling.orgN=n; tiling.orgK=k; }
     void SetBias(bool) {}
     void SetFixSplit(uint32_t m, uint32_t n, int) { tiling.baseM=m; tiling.baseN=n; }
@@ -84,7 +87,7 @@ constexpr MatmulConfig GetNormalConfig(bool = false, bool = false, bool = false,
     return MatmulConfig{int(mode)};
 }
 namespace matmul {
-constexpr MatmulConfig kDefaultConfig = GetNormalConfig();
+inline constexpr MatmulConfig kDefaultConfig = GetNormalConfig();
 template <AscendC::TPosition POSITION, CubeFormat FORMAT, typename TYPE, bool ISTRANS = false,
     LayoutMode LAYOUT = LayoutMode::NONE>
 struct MatmulType { using T = TYPE; static constexpr bool isTrans = ISTRANS; static constexpr LayoutMode layout = LAYOUT; };
@@ -110,6 +113,7 @@ public:
         m=sm; n=sn; k=sk; tile=0; pending=false; done=false;
         bmmms_sim::MatmulRequests().fetch_add(1, std::memory_order_relaxed);
     }
+    void SetTail(uint32_t sm, uint32_t sn, uint32_t sk) { SetSingleShape(sm, sn, sk); }
     void SetTensorA(AscendC::GlobalTensor<typename A::T> input, bool trans) {
         if (trans && !A::isTrans) throw std::runtime_error("MatmulType must enable A transpose");
         a=input; ta=trans;
@@ -124,7 +128,7 @@ public:
         pending=true;
         return true;
     }
-    template <bool sync=true> void GetTensorC(AscendC::LocalTensor<typename C::T> output, int atomic, bool sequential) {
+    template <bool sync=true, typename Destination> void GetTensorC(Destination output, int atomic, bool sequential) {
         if (!pending || atomic || !sequential) throw std::runtime_error("unexpected CPU Matmul output mode");
         const uint32_t col0 = tile * baseN;
         const uint32_t tileCols = n - col0 < baseN ? n - col0 : baseN;

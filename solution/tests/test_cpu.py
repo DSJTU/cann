@@ -29,13 +29,12 @@ def cpu_source(source_path):
     assert not re.search(r'\b(?:printf|fprintf|puts|putchar|cout|cerr|DumpTensor)\b', source)
     assert '#include <cstdio>' not in source and '#include <stdio.h>' not in source
     source = re.sub(r'^#include "[^"]+"\n', '', source, flags=re.MULTILINE)
-    launch = re.compile(r'(Baseline<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);')
-    source, count = launch.subn(r'sim::Launch(\2, [&] { \1(\3); });', source)
-    assert count == 8, f'unexpected launch count: {count}'
-    source, count = re.subn(
-        r'(Fused<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
-        r'sim::LaunchMixed(\2, [&] { \1(\3); });', source)
-    assert count == 2, f'unexpected Cube launch count: {count}'
+    for name, expected, launcher in (
+            ('fused_kernel', 1, 'LaunchMixed'), ('bmmms_small_kernel', 1, 'Launch'), ('bmmms_dot_kernel', 2, 'Launch')):
+        source, count = re.subn(
+            rf'({name}<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
+            rf'sim::{launcher}(\2, [&] {{ \1(\3); }});', source)
+        assert count == expected, (name, count)
     assert '<<<' not in source
     return '#include "sim_matmul.h"\n' + source
 
@@ -78,6 +77,11 @@ def cases():
         yield (2, 33, 19, 40), dtype, ta, tb, 24, 'zero'
         yield (1, 17, 1, 32), dtype, ta, tb, 1, 'cancellation'
         yield (1, 17, 1, 32), dtype, ta, tb, 24, 'cancellation'
+    # Dedicated cached small-matrix vectors: maximal tile, K tail and batch reuse.
+    for shape, dtype, ta, tb, cores in itertools.product(
+            ((3, 31, 32, 128), (2, 32, 31, 72), (64, 3, 2, 32)),
+            (1, 2), (False, True), (False, True), (1, 20)):
+        yield shape, dtype, ta, tb, cores, 'random'
     # Exceed the real production parallelism threshold, including multiple
     # adjacent batch outputs and M ranges not divisible by the group count.
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):

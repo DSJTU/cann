@@ -35,14 +35,14 @@ def profile_timings(directory, count):
     files = list(Path(directory).rglob('op_summary*.csv'))
     if len(files) != 1:
         raise ValueError(f'expected one operator summary in {directory}')
-    rows = records(files[0])
+    rows = records(files[0], allow_historical=True)
     if len(rows) != count * 12:
         raise ValueError(f'expected {count * 12} single-kernel launches in {directory}, got {len(rows)}')
     # Both sides may use different dispatch implementations, but each case
     # must execute one consistent kernel for its two warmups and ten samples.
     for i in range(count):
         names = {row['Op Name'] for row in rows[i * 12:(i + 1) * 12]}
-        if len(names) != 1 or not any(kind in next(iter(names)) for kind in ('Baseline', 'Fused')):
+        if len(names) != 1 or not any(kind in next(iter(names)) for kind in ('Baseline', 'Fused', 'fused_kernel', 'bmmms_small_kernel', 'bmmms_dot_kernel')):
             raise ValueError(f'unexpected kernel dispatch for case {i} in {directory}')
     values = [float(r['Task Duration(us)']) for r in rows]
     if any(not math.isfinite(v) or v <= 0 for v in values):
