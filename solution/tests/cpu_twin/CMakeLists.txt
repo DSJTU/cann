@@ -5,7 +5,7 @@ if(NOT DEFINED CANN_ROOT)
     set(CANN_ROOT "$ENV{ASCEND_HOME_PATH}")
 endif()
 find_package(tikicpulib REQUIRED CONFIG PATHS "${CANN_ROOT}/tools/tikicpulib/lib/cmake" NO_DEFAULT_PATH)
-set(KERNEL_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/../../kernel.asc")
+set(KERNEL_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/../../kernel.asc" CACHE FILEPATH "Kernel source for CPU Twin version comparison")
 set(KERNEL_ADAPTED "${CMAKE_CURRENT_BINARY_DIR}/kernel_twin.inc")
 add_custom_command(OUTPUT "${KERNEL_ADAPTED}"
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/prepare.py" "${KERNEL_SOURCE}" "${KERNEL_ADAPTED}"

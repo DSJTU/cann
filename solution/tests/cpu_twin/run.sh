@@ -16,7 +16,7 @@ while [[ $# -gt 0 ]]; do
         --suite) task_suite=$2; shift 2 ;;
         --case) task_case=(--case "$2"); shift 2 ;;
         --gdb) task_debug=1; shift ;;
-        *) echo "Usage: $0 [--suite smoke|short-cube|long-cube|long-precision|all] [--case INDEX] [--gdb]" >&2; exit 1 ;;
+        *) echo "Usage: $0 [--suite smoke|short-cube|long-cube|long-precision|long-batches|all] [--case INDEX] [--gdb]" >&2; exit 1 ;;
     esac
 done
 task_work="$task_root/.private/cpu-twin"
@@ -25,7 +25,8 @@ task_compiler=${CXX:-g++}
 if [[ -z ${CXX:-} ]] && command -v g++-15 >/dev/null; then task_compiler=g++-15; fi
 task_compiler=$(command -v "$task_compiler")
 cmake -S "$task_root/solution/tests/cpu_twin" -B "$task_work/build" \
-    -DCMAKE_CXX_COMPILER="$task_compiler" -DPython3_EXECUTABLE="$task_python" -DCANN_ROOT="$task_sdk"
+    -DCMAKE_CXX_COMPILER="$task_compiler" -DPython3_EXECUTABLE="$task_python" -DCANN_ROOT="$task_sdk" \
+    -DKERNEL_SOURCE="$task_root/solution/kernel.asc"
 cmake --build "$task_work/build" -j4
 task_prefix="$task_work/data/$task_suite${task_case[1]:+-case${task_case[1]}}"
 "$task_python" "$task_root/solution/tests/cpu_twin/data.py" --suite "$task_suite" "${task_case[@]}" --prefix "$task_prefix"

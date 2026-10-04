@@ -44,6 +44,8 @@ Matmul 的输入类型 `MatmulType<POSITION, FORMAT, TYPE, ISTRANS>` 默认不�
 
 宽窗口的 `IterateBatch` 不能沿用单基本块的输出布局假设。GM 输出设置 `enSequentialWrite=false`，让每个基本块落在完整 `singleCoreM × singleCoreN` 矩阵内对应的位置；读回 64/128 列块时，GM 行间隙为 `(singleCoreN-foldColumns)*sizeof(float)`。`matrixStrideC` 是保留参数，保持默认 0；NORMAL 的面板矩阵大小由 tiling 定义。接口依据见 [CANN 9.0 IterateBatch](https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0642.html)。CPU 模型验证该 ND 寻址，不能证明设备端实现与舍入行为。
 
+还需覆盖面板数量与 L1 批次拆分的组合。CANN 9.0 NORMAL `BATCH_LARGE_THAN_L1` 的内部 `BatchLoop` 可能把偶数总批次拆成奇数大小的 L1 主块，再按两个等长半块迭代，漏掉主块末尾的矩阵。A3 真机已在 10/14/18/20/42/50 个面板的宽窗口上复现，普通 FP64 CPU Matmul 模型不会暴露这个 SDK 问题。当前将 Matmul 批次数向上补为 2 的幂，让各级等分不会产生奇数主块；多余的 A/B 面板在每个 worker 首次使用前清零，最终补偿只读有效 K 面板。零面板跨 M/N 任务复用，不读取越界输入，也不改变有效 K 的归约顺序。补齐增加部分形状的 GM 空间与 Cube 工作量，最大 K=8192 时仍为 64 个面板；应同时检查补齐边界、短 K 尾块、重复调用、图捕获和真实单次 kernel 启动。
+
 跨 K 面板仅用 Kahan 仍会在合法的大小量级抵消中失败：A 全为 1024，B 的三个 128 元素面板分别为 8192、2^-22、-8192，单个点积应为 2^-5。原先实现把输出 2.03125 算成 0；官方 CPU Twin 和 A3 真机均已复现。长 K 使用一般 TwoSum 保留每次加法的残差，独立累计低位，全部 K 面板结束后合并高低位再取 N 最大值。它修复跨面板舍入损失，不消除 Cube 面板内部的所有舍入误差。打包结束且同步 IterateBatch 返回后，打包 UB 复用于 C 和 TwoSum 临时量；宽窗口每次折叠 128 列，两个 64 列子块共享一次读回。行间距对齐 8 个 FP32 时，WholeReduceMax 的有效列 mask 可处理非对齐尾列；仅行间距不对齐的紧密结果才需要逐行 Gather。
 
 源码顺序不代表 Scalar、Vector、MTE2、MTE3 已完成。按生产者→消费者选 HardEvent，通过 TPipe 获取事件 ID，配对 SetFlag/WaitFlag；基线中的常见关系：

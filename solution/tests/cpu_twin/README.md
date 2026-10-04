@@ -9,10 +9,13 @@
 ```bash
 bash solution/tests/cpu_twin/run.sh --suite all
 bash solution/tests/cpu_twin/run.sh --suite long-precision
+bash solution/tests/cpu_twin/run.sh --suite long-batches
 bash solution/tests/cpu_twin/run.sh --suite long-cube --case 8 --gdb
 ```
 
 `smoke` 有 16 组 Vector，`short-cube` 有 8 组短 K Cube，`long-cube` 有 16 组长 K Cube（128/256 列窗口）；`all` 共 40 组。均包含 FP16/BF16 和四种转置，显式使用 1 个逻辑核，MIX 模式由官方库启动 1 个 AIC 与 2 个 AIV 进程。每组重复两次，检查输入不变、输出保护区、确定性和一个 CPU launch，然后使用独立 FP64 golden 核验完整输出。`long-precision` 另外提供 32 组大小量级抵消回归，包含正负近零结果、M/N/K 尾块、多个窗口、两种类型、四种布局和 1/2 个逻辑核；不包含在 `all` 中。产物和日志写到 `.private/cpu-twin`。
+
+`long-batches` 有 8 组 L1 批次拆分回归，覆盖 10/14 个 K 面板、128/256 列窗口、两种类型与 NN/TT 布局。比较历史源码时，可在独立 CMake 构建目录传 `-DKERNEL_SOURCE=/绝对路径/kernel.asc`；生成清单仍记录该源码的 SHA256，当前默认构建继续使用工作区 kernel。
 
 在 GDB 中对 `kernel.asc` 设置断点。例如 Vector 用 `break kernel.asc:71`，MIX 用 `break kernel.asc:952`，然后执行 `run`、`info args`、`next` 或 `print`。调试入口默认跟随 fork 子进程，保留其他进程并启用 `schedule-multiple`，以便核间同步继续执行；不同核命中断点或退出时可能多次停住，使用 `info inferiors` 查看进程，`inferior 1` 返回 Host，`continue` 继续。要查看长 K 内部，直接在 `LongScores` 的源码行上设断点。
 

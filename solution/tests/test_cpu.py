@@ -207,6 +207,13 @@ def long_cube_cases():
         yield (1, 65, 129, 512), dtype, ta, tb, cores, 'panel-magnitude'
         # Multiple windows, uneven rows/columns and a final short K panel.
         yield (1, 65, 513, 520), dtype, ta, tb, cores, 'panel-magnitude-negative'
+    # Even outer batches can split into odd L1 groups: 10/20 panels at N=256,
+    # 14/18 panels at N=128. The SDK split must not drop a group's final panel.
+    for shape, dtype, ta, tb, cores in itertools.product(
+            ((1, 65, 513, 1160), (1, 65, 257, 2560),
+             (1, 65, 129, 1792), (1, 65, 129, 2304)),
+            (1, 2), (False, True), (False, True), (1, 20)):
+        yield shape, dtype, ta, tb, cores, 'random'
 
 
 def make_inputs(shape, mode, rng):
