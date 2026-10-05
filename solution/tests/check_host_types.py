@@ -17,7 +17,6 @@ INTERFACES = r'''
 #include <cstdint>
 #define __gm__ __attribute__((address_space(1)))
 #define GM_ADDR __gm__ uint8_t*
-#define __kfc_workspace__
 struct half {};
 struct bfloat16_t {};
 using aclrtStream = void*;
@@ -62,11 +61,9 @@ def host_source(path):
     source = re.sub(r'^#include "[^"]+"\n', '', path.read_text(), flags=re.MULTILINE)
     # Remove only the reviewed device-only classes, keeping Schedule/Plan
     # and every Host function intact for the address-space check.
-    for name in ('FusedMaxSim', 'BmmmsSmallKernel', 'BmmmsDotKernel', 'DirectCube', 'DirectReduce', 'DirectPack'):
+    for name in ('VectorMaxSim', 'BmmmsSmallKernel', 'BmmmsDotKernel'):
         match = re.search(r'(?:template\s*<[^>]+>\s*)?class '+name+r'\s*\{', source)
-        if not match:
-            assert name in ('FusedMaxSim', 'DirectCube', 'DirectReduce', 'DirectPack'), name
-            continue
+        assert match, name
         depth, end = 1, match.end()
         while depth:
             depth += (source[end] == '{') - (source[end] == '}')
@@ -87,16 +84,13 @@ def host_source(path):
         signature = match.group()[:-1]
         if '__global__' in signature:
             signature = re.sub(r'__(?:global|vector|mix|schedmode)__\s*(?:\([^)]*\))?', '', signature)
-            names.extend(re.findall(r'void (fused_kernel|bmmms_small_kernel|bmmms_dot_kernel|direct_cube_kernel|packed_cube_kernel)\(', signature))
+            names.extend(re.findall(r'void (fused_kernel|bmmms_small_kernel|bmmms_dot_kernel|bmmms_static_dot_kernel)\(', signature))
             replacement = signature + ';'
         else:
             replacement = ''
         source = source[:match.start()] + replacement + source[end:]
-    assert len(names)==len(set(names)) and {'bmmms_dot_kernel','bmmms_small_kernel'} <= set(names), names
-    for pattern, expected in ((r'fused_kernel<[^>]+>', 1), (r'bmmms_small_kernel<[^>]+>', 4), (r'bmmms_dot_kernel<[^>]+>', 2), (r'direct_cube_kernel<[^>]+>', 4), (r'packed_cube_kernel<[^>]+>', 4)):
-        if not re.search(pattern,source):
-            assert 'fused_kernel' in pattern or 'direct_cube_kernel' in pattern or 'packed_cube_kernel' in pattern
-            continue
+    assert len(names)==len(set(names)) and set(names)=={'fused_kernel','bmmms_dot_kernel','bmmms_static_dot_kernel','bmmms_small_kernel'}, names
+    for pattern, expected in ((r'fused_kernel<[^>]+>', 1), (r'bmmms_small_kernel<[^>]+>', 4), (r'bmmms_static_dot_kernel<[^>]+>', 3), (r'bmmms_dot_kernel<[^>]+>', 1)):
         source, count = re.subn(
             '(' + pattern + r')<<<([^,]+),\s*nullptr,\s*stream>>>\(([^;]+)\);',
             r'(void(stream), void(\2), \1(\3));', source)

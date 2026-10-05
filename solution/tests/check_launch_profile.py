@@ -10,7 +10,7 @@ def records(path):
     if not rows:
         raise ValueError('empty kernel profile')
     names = ('fused_kernel', 'bmmms_small_kernel', 'bmmms_dot_kernel',
-             'direct_cube_kernel', 'packed_cube_kernel')
+             'bmmms_static_dot_kernel')
     for row in rows:
         if not any(name in row['Op Name'] for name in names):
             raise ValueError('unexpected kernel in profile: ' + row['Op Name'])
@@ -24,23 +24,16 @@ def records(path):
 
 def dispatch(shape, cores=20, tb=False, ta=False):
     """Expected entry for the diagnostic device's available Cube count."""
-    b, m, n, k = shape
-    ta, tb = ta and m != 1, tb or n == 1
+    _, m, n, k = shape
     if m == n == 1:
-        return 'bmmms_dot_kernel'
-    if (m*n <= 256 or b > cores) and m <= 32 and n <= 64 and k <= 256 and n*k <= 8192 and m*n*k <= 65536:
+        return 'bmmms_static_dot_kernel' if k <= 64 else 'bmmms_dot_kernel'
+    n_pad, groups = (n+7)//8*8, (k+63)//64
+    fixed_bytes = ((m*k+15)//16 + (n*k+15)//16)*32 + 32 + (
+        m*k + n*k + max(m*k,n*k) + 2*k + (2*m+7)//8*8)*4
+    if (m <= 64 and n <= 64 and k <= 1024 and m*k <= 8192 and n*k <= 8192
+            and m*n*k <= 131072 and n_pad*k <= 16384
+            and fixed_bytes + n_pad*(k+groups)*4 <= 180*1024):
         return 'bmmms_small_kernel'
-    if k >= 4096 and m <= 128 and n <= 256 and b <= 8 and not (not ta and tb and m*n <= 512) and b*((m+15)//16) <= cores:
-        return 'packed_cube_kernel'
-    if k <= 256 and not (m >= 512 and n >= 1024) and not (tb and m <= 128 and n > 256 and k >= 128):
-        tm, tn = min(128, (m+15)//16*16), min(128, (n+15)//16*16)
-        while not (m <= 128 and n <= 128) and b*((m+tm-1)//tm)*((n+tn-1)//tn) < cores and (tm > 16 or tn > 16):
-            if tm > 16 and (tn == 16 or tm >= tn):
-                tm = (tm//2+15)//16*16
-            else:
-                tn = (tn//2+15)//16*16
-        if b*((m+tm-1)//tm) <= cores:
-            return 'direct_cube_kernel'
     return 'fused_kernel'
 
 

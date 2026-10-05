@@ -66,7 +66,7 @@ def main():
                 raise RuntimeError(name+' needs BMMMS_TRACE_RUNTIME=ON')
             allocated, freed, error = map(int,summaries[0])
             metadata = json.loads(prefix.with_suffix('.json').read_text())
-            cubes = sum(dispatch(v['shape'],v.get('cores',0) or 20,v.get('tb',False),v.get('ta',False)) in ('fused_kernel','direct_cube_kernel','packed_cube_kernel')
+            cubes = sum(dispatch(v['shape'],v.get('cores',0) or 20,v.get('tb',False),v.get('ta',False)) == 'fused_kernel'
                         for v in metadata)
             release_syncs = len(re.findall(r'^INTERNAL_RELEASE_SYNC ret=0$', log, re.M))
             if freed != allocated or error or (allocated > 0 and release_syncs == 0):

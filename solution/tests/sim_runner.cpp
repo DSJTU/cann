@@ -39,14 +39,7 @@ int main() {
                 if (sim::launchCount() - launches != 1)
                     throw std::runtime_error("each invocation must launch exactly one kernel");
             };
-            const auto requestsBefore = bmmms_sim::MatmulRequests().load();
-            const auto tilesBefore = bmmms_sim::MatmulTiles().load();
             invoke();
-            if (std::getenv("BMMMS_REQUEST_LOG")) {
-                std::cerr << "REQ " << batch << ' ' << m << ' ' << n << ' ' << k << ' ' << cores << ' '
-                          << (bmmms_sim::MatmulRequests().load() - requestsBefore) << ' '
-                          << (bmmms_sim::MatmulTiles().load() - tilesBefore) << '\n';
-            }
             const auto first = y;
             invoke();
             if (std::memcmp(first.data(), y.data(), y.size() * sizeof(float)))

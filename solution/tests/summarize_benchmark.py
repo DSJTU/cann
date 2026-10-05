@@ -47,7 +47,7 @@ def profile_timings(directory, count):
         names = {row['Op Name'] for row in rows[i * 12:(i + 1) * 12]}
         if len(names) != 1 or not any(kind in next(iter(names)) for kind in (
             'fused_kernel', 'bmmms_small_kernel', 'bmmms_dot_kernel',
-            'direct_cube_kernel', 'packed_cube_kernel',
+            'bmmms_static_dot_kernel',
         )):
             raise ValueError(f'unexpected kernel dispatch for case {i} in {directory}')
     values = [float(r['Task Duration(us)']) for r in rows]
