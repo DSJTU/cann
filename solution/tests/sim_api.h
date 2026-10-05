@@ -18,7 +18,8 @@
 #define __mix__(a, b)
 #define __schedmode__(mode)
 #define __gm__
-#define ASCEND_IS_AIV (true)
+#define ASCEND_IS_AIV (!sim::isCube())
+#define ASCEND_IS_AIC (sim::isCube())
 using half = _Float16;
 struct bfloat16_t {
     uint16_t bits;
@@ -41,8 +42,10 @@ using aclrtContext = void*;
 using event_t = int;
 struct TensorInfo { const int64_t* shape; int64_t numDims; int32_t dtype; };
 struct TensorGroupInfo { const TensorInfo* tensors; int64_t numTensors; };
-enum Pipe { PIPE_ALL, PIPE_V };
+enum Pipe { PIPE_ALL, PIPE_V, PIPE_MTE1, PIPE_MTE2, PIPE_MTE3, PIPE_M, PIPE_FIX, PIPE_S };
 namespace sim {
+inline bool& isCube() { static thread_local bool v=false;return v; }
+inline std::vector<std::weak_ptr<struct Storage>>& localStorage() { static thread_local std::vector<std::weak_ptr<struct Storage>> v; return v; }
 inline uint32_t& logicalBlocks() { static thread_local uint32_t v = 0; return v; }
 inline uint32_t& block() { static thread_local uint32_t v = 0; return v; }
 inline uint32_t& blocks() { static uint32_t v = 1; return v; }
@@ -106,13 +109,14 @@ template <typename F> void LaunchMixed(uint32_t n, F f) {
 }
 struct Storage {
     std::vector<uint8_t> bytes, initialized;
-    bool dmaOperand = false;
+    bool dmaOperand = false, l1Operand = false;
+    std::vector<double> cubeAccumulator;
     explicit Storage(size_t n) : bytes(n, 0xFF), initialized(n, 0) {}
 };
 }
 namespace AscendC {
-enum class TPosition { GM, VECIN, VECOUT, VECCALC };
-enum class HardEvent { V_S, S_V, MTE2_V, MTE2_S, S_MTE2, S_MTE3, V_MTE3, MTE3_V, MTE2_MTE3, MTE3_MTE2, MTE3_S };
+enum class TPosition { GM, VECIN, VECOUT, VECCALC, A1, B1, A2, B2, CO1 };
+enum class HardEvent { V_S, S_V, MTE2_V, MTE2_S, S_MTE2, S_MTE3, V_MTE3, MTE3_V, MTE2_MTE3, MTE3_MTE2, MTE3_S, V_MTE2, MTE2_MTE1, MTE1_M, M_MTE1, MTE1_MTE2, M_FIX, FIX_M };
 enum class RoundMode { CAST_NONE };
 enum class ReduceOrder { ORDER_ONLY_VALUE };
 inline uint32_t GetBlockIdx() { return sim::block(); }
@@ -133,6 +137,9 @@ public:
     explicit LocalTensor(std::shared_ptr<sim::Storage> storage, size_t at = 0) : s(storage), offset(at) {}
     template <typename U> LocalTensor<U> ReinterpretCast() const { return LocalTensor<U>(s, offset); }
     const void* Identity() const { return s.get(); }
+    bool IsL1() const { return s && s->l1Operand; }
+    uint8_t* GetPhyAddr() const { return s->bytes.data()+offset; }
+    std::vector<double>& Accumulator() { return s->cubeAccumulator; }
     LocalTensor operator[](size_t n) const { return LocalTensor(s, offset + n * sizeof(T)); }
     void Check(size_t i, bool read) const {
         const size_t at = offset + i * sizeof(T);
@@ -193,6 +200,7 @@ public:
     void Init(int count, size_t bytes) {
         for (int i = 0; i < count; ++i) {
             auto storage = std::make_shared<sim::Storage>(bytes);
+            sim::localStorage().push_back(storage);
             storage->dmaOperand = P == TPosition::VECIN || P == TPosition::VECOUT;
             slots.push_back(storage); busy.push_back(false);
         }
@@ -222,15 +230,22 @@ class TPipe {
 public:
     template <TPosition P> void InitBuffer(TBuf<P>& q, size_t n) {
         q.s = std::make_shared<sim::Storage>(n);
+        sim::localStorage().push_back(q.s);
         q.s->dmaOperand = P == TPosition::VECIN || P == TPosition::VECOUT;
-        Reserve(n);
+        q.s->l1Operand = P == TPosition::A1 || P == TPosition::B1;
+        if(P==TPosition::VECIN || P==TPosition::VECOUT || P==TPosition::VECCALC)Reserve(n);
+        else if(P==TPosition::A1 || P==TPosition::B1) {
+            l1Used += (n+511)/512*512;
+            if(l1Used>512U*1024)throw std::runtime_error("combined L1 buffers exceed hardware budget");
+        } else if(n>(P==TPosition::CO1 ? 128U*1024 : 64U*1024))
+            throw std::runtime_error("Cube buffer exceeds hardware budget");
     }
     template <TPosition P, int Depth> void InitBuffer(TQue<P, Depth>& q, int count, size_t n) {
         q.Init(count, n); Reserve(size_t(count) * n);
     }
     int FetchEventID(HardEvent) { return 0; }
 private:
-    size_t used = 0;
+    size_t used = 0, l1Used = 0;
     void Reserve(size_t n) {
         used += (n + 31) / 32 * 32;
         if (used > 192 * 1024) throw std::runtime_error("UB allocation exceeds conservative A2 budget");
@@ -280,6 +295,11 @@ template <typename T> void DataCopy(GlobalTensor<T> dst, LocalTensor<T> src, uin
     DataCopyPad(dst, src, DataCopyExtParams{1, n * uint32_t(sizeof(T)), 0, 0, 0});
 }
 template <typename T> void DataCopy(LocalTensor<T> dst, GlobalTensor<T> src, uint32_t n) {
+    if(dst.IsL1()) {
+        dst.Aligned();if(n*sizeof(T)%32)throw std::runtime_error("unaligned L1 copy");
+        for(uint32_t i=0;i<n;++i)dst.SetValue(i,src.GetValue(i));
+        return;
+    }
     DataCopyPad(dst, src, DataCopyExtParams{1, n * uint32_t(sizeof(T)), 0, 0, 0},
                 DataCopyPadExtParams<T>{false, 0, 0, T(0)});
 }
@@ -408,6 +428,28 @@ inline void WholeReduceMax(LocalTensor<float> dst, LocalTensor<float> src, int32
         for (int32_t i = 1; i < mask; ++i)
             value = std::max(value, src.GetValue(r * srcStride * 8 + i / 8 * blockStride * 8 + i % 8));
         dst.SetValue(r * dstStride, value);
+    }
+}
+}
+
+namespace AscendC {
+struct TransDataTo5HDParams { bool dstHighHalf,srcHighHalf; uint8_t repeatTimes; uint16_t dstRepStride,srcRepStride; };
+inline LocalTensor<uint16_t> RawAddress(uint64_t address) {
+    for (auto weak : sim::localStorage()) if(auto storage=weak.lock()) {
+        auto first=reinterpret_cast<uint64_t>(storage->bytes.data());
+        if(address>=first && address<first+storage->bytes.size()) return LocalTensor<uint16_t>(storage,address-first);
+    }
+    throw std::runtime_error("unknown transpose address");
+}
+template<typename T> void TransDataTo5HD(uint64_t dst[16],uint64_t src[16],TransDataTo5HDParams p) {
+    static_assert(sizeof(T)==2,"only 16-bit raw tile transpose modeled");
+    if(p.dstHighHalf || p.srcHighHalf) throw std::runtime_error("unsupported transpose half");
+    for(uint32_t r=0;r<p.repeatTimes;++r) {
+        uint16_t block[16][16];
+        for(uint32_t i=0;i<16;++i) for(uint32_t j=0;j<16;++j)
+            block[i][j]=RawAddress(src[i]+r*p.srcRepStride*32).GetValue(j);
+        for(uint32_t i=0;i<16;++i) for(uint32_t j=0;j<16;++j)
+            RawAddress(dst[j]+r*p.dstRepStride*32).SetValue(i,block[i][j]);
     }
 }
 }

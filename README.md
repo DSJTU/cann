@@ -2,7 +2,7 @@
 
 Ascend C 比赛算子。提交 [solution/kernel.asc](solution/kernel.asc) 全部内容，支持 FP16/BF16、四种布局和 FP32 输出，每次调用只启动一个 kernel。
 
-Cube 沿完整 K 计算，在 N 窗口内异步输出独立 GM 槽，Vector 同时取行最大值；需要跨核合并时在同一个 MIX kernel 内完成。小矩阵和单点积使用 Vector 专用路径。
+短 K 使用直接 Cube 指令；窄矩阵长 K 在同一个 kernel 内重排 NZ，并在 L1 复用完整 A 面板。其余矩阵使用 SDK Matmul 的异步 N 窗口。Cube 完成 K 点积后，Vector 取行最大值并归约；很小的矩阵和单点积使用 Vector 专用路径。
 
 - [赛题契约](cann_problem.md)
 - [构建与验证](solution/README.md)

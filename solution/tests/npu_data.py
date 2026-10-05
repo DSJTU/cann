@@ -7,6 +7,9 @@ from pathlib import Path
 import struct
 
 import numpy as np
+import sys
+sys.dont_write_bytecode = True
+
 from test_cpu import cases, extended_cases, performance_cases, cube_finish_cases, short_cube_cases, long_cube_cases, make_inputs, quantize
 
 
@@ -14,9 +17,16 @@ def specs(suite):
     if suite == 'native':
         # Current Cube/Vector boundaries, full-K tails and multi-chunk Finish.
         shapes = ((3, 31, 32, 128), (2, 32, 31, 72), (64, 3, 2, 32),
-                  (1, 65, 513, 520), (1, 65, 129, 8192), (1, 8192, 257, 40))
+                  (1, 65, 513, 520), (1, 65, 129, 8192), (1, 8192, 257, 40),
+                  (3, 17, 33, 520), (1, 128, 256, 512), (8, 33, 65, 1032),
+                  (1, 129, 256, 520), (1, 65, 257, 512),
+                  (1, 32, 32, 2048), (2, 17, 63, 1024), (1, 31, 17, 512))
         for shape, dtype, ta, tb in itertools.product(shapes, (1, 2), (False, True), (False, True)):
             yield shape, dtype, ta, tb, 0, 'random'
+        for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
+            yield (1, 9, 17, 520), dtype, ta, tb, 1, 'random'
+        for mode, cores in itertools.product(('negative', 'zero'), (1, 0)):
+            yield (2, 17, 33, 520), 2, True, True, cores, mode
         for mode in ('negative', 'zero'):
             yield (2, 32, 31, 72), 2, True, True, 1, mode
         for mode in ('m-magnitude', 'm-cancellation'):
@@ -26,10 +36,10 @@ def specs(suite):
     if suite == 'launch-rule':
         # Cover all current dispatches and exactly one task per iteration.
         # These are our diagnostic inputs, not the unknown contest shapes.
-        shapes = [(1, 65, 129, 1024), (4, 65, 129, 256), (1, 33, 129, 8192),
-                  (1, 256, 512, 128), (1, 513, 257, 128), (1, 1649, 257, 40),
+        shapes = [(1, 32, 32, 2048), (4, 65, 129, 256), (1, 33, 129, 8192),
+                  (1, 256, 512, 128), (1, 512, 1024, 128), (1, 1649, 257, 40),
                   (1, 1, 1, 32), (2, 17, 19, 40), (1, 33, 129, 64),
-                  (1, 65, 257, 40), (2, 127, 63, 32), (3, 31, 17, 256),
+                  (1, 65, 257, 40), (2, 127, 63, 32), (1, 129, 1024, 8192),
                   (1, 129, 1, 40), (64, 3, 2, 32), (1, 9, 17, 8192)]
         for i, shape in enumerate(shapes):
             yield shape, 1 + i % 2, bool(i % 2), bool(i % 3), 0, 'random'

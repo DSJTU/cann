@@ -12,6 +12,9 @@ from pathlib import Path
 import re
 import subprocess
 
+import sys
+sys.dont_write_bytecode = True
+
 from check_launch_profile import dispatch
 
 
@@ -63,7 +66,8 @@ def main():
                 raise RuntimeError(name+' needs BMMMS_TRACE_RUNTIME=ON')
             allocated, freed, error = map(int,summaries[0])
             metadata = json.loads(prefix.with_suffix('.json').read_text())
-            cubes = sum(dispatch(v['shape']) == 'fused_kernel' for v in metadata)
+            cubes = sum(dispatch(v['shape'],v.get('cores',0) or 20,v.get('tb',False),v.get('ta',False)) in ('fused_kernel','direct_cube_kernel','packed_cube_kernel')
+                        for v in metadata)
             release_syncs = len(re.findall(r'^INTERNAL_RELEASE_SYNC ret=0$', log, re.M))
             if freed != allocated or error or (allocated > 0 and release_syncs == 0):
                 raise RuntimeError(name+' scratch cache was not fully released or an internal ACL call failed')
@@ -111,6 +115,13 @@ def main():
         if len(files) != 1:
             raise RuntimeError('ambiguous or missing launch profile')
         metadata = json.loads(prefix.with_suffix('.json').read_text())
+        observed_cores = dict((int(case), int(cores)) for case, cores in
+            re.findall(r'CASE (\d+) repeat=\d+[^\n]* cores=(\d+)',
+                       (runs/'launch-rule-profile.log').read_text()))
+        if len(observed_cores) != len(metadata):
+            raise RuntimeError('launch profile lacks effective per-case core counts')
+        for spec in metadata:
+            spec['cores'] = observed_cores[spec['index']]
         rows = verify_launches(files[0],metadata,5)
         result['launch_rule'] = dict(expected=len(metadata)*5,observed=len(rows),passed=True)
         result['workflow_passed'] = True

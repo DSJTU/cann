@@ -17,6 +17,9 @@ import subprocess
 import tempfile
 
 import numpy as np
+import sys
+sys.dont_write_bytecode = True
+
 from check_host_types import main as check_host_types
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,13 +31,16 @@ def cpu_source(source_path):
     assert '#include <cstdio>' not in source and '#include <stdio.h>' not in source
     source = re.sub(r'^#include "[^"]+"\n', '', source, flags=re.MULTILINE)
     for name, expected, launcher in (
-            ('fused_kernel', 1, 'LaunchMixed'), ('bmmms_small_kernel', 4, 'Launch'), ('bmmms_dot_kernel', 2, 'Launch')):
+            ('fused_kernel', 1, 'LaunchMixed'), ('bmmms_small_kernel', 4, 'Launch'), ('bmmms_dot_kernel', 2, 'Launch'), ('direct_cube_kernel', 4, 'LaunchDirect'), ('packed_cube_kernel', 4, 'LaunchDirect')):
+        if name not in source:
+            assert name in ('fused_kernel','direct_cube_kernel','packed_cube_kernel')
+            continue
         source, count = re.subn(
-            rf'({name}<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
+            rf'({name}<[^>]+>)<<<([^,]+),\s*nullptr,\s*stream>>>\(([^;]+)\);',
             rf'sim::{launcher}(\2, [&] {{ \1(\3); }});', source)
         assert count == expected, (name, count)
     assert '<<<' not in source
-    return '#include "sim_matmul.h"\n' + source
+    return '#include "sim_matmul.h"\n#include "sim_cube.h"\n' + source
 
 
 def quantize(values, dtype):
@@ -57,6 +63,8 @@ def cases():
         (3, 31, 17, 256), (1, 1, 513, 40), (1, 2, 129, 32),
         (1, 129, 1, 40), (64, 1, 2, 32), (1, 1, 17, 8192),
         (2, 17, 33, 136), (1, 3, 19, 248), (1, 2, 17, 264),
+        (1, 7, 31, 4104), (2, 49, 193, 4096),
+        (1, 9, 17, 520), (8, 33, 65, 1032),
         (1, 7, 15, 56), (1, 9, 16, 96), (1, 5, 17, 112), (1, 3, 33, 120),
         (1, 8192, 1, 32), (1, 65, 1, 40), (64, 3, 2, 32),
     ]
