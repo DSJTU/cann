@@ -26,7 +26,7 @@ python3 solution/tests/run_npu_checks.py --suites baseline robustness \
   --modes ordinary --runs .private/runtime/npu/check-new
 ```
 
-只在前一步退出 0 后执行下一步。`--runs` 必须是全新目录。runner 的成功链接会生成 `.build.json`，记录源码、runner、二进制和编译器哈希、架构与编译选项；源码变化或替换旧二进制后必须重建。普通调用通过不代表捕获、多流等其他模式通过。真实每次单 kernel 数量仍通过 msprof 单独检查。
+只在前一步退出 0 后执行下一步。`--runs` 必须是全新目录。runner 的成功链接会生成 `.build.json`，记录源码、runner、构建配置、二进制和编译器哈希、架构与编译选项；源码变化或替换旧二进制后必须重建。普通调用通过不代表捕获、多流等其他模式通过。真实每次单 kernel 数量仍通过 msprof 单独检查。
 
 检查数学契约和启动数量，不强制复制参考方案的 Cube/Vector 分派阈值或 scratch 分配数量。合法的分派优化不能被旧阈值模型判错；报告保存实际观测的 kernel 名称。新增入口需要更新 profile 名称识别，并重新核对单 kernel 规则。
 

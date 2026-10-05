@@ -20,7 +20,7 @@ def build_identity(binary):
     identity = json.loads(Path(str(binary) + '.build.json').read_text())
     if sha256(binary) != identity['binary_sha256']:
         raise ValueError(f'binary does not match successful build record: {binary}')
-    for key in ('kernel_sha256', 'runner_sha256', 'compiler_sha256'):
+    for key in ('kernel_sha256', 'runner_sha256', 'build_spec_sha256', 'compiler_sha256'):
         if not re.fullmatch(r'[a-f0-9]{64}', identity[key]):
             raise ValueError('invalid build identity: ' + key)
     return identity
@@ -57,11 +57,13 @@ def main():
         parser.error('--rounds must be positive; at least four for a screening decision')
     binaries = dict(baseline=args.baseline.resolve(), candidate=args.candidate.resolve())
     identities = {side: build_identity(binary) for side, binary in binaries.items()}
-    for key in ('runner_sha256', 'compiler_sha256', 'arch', 'flags'):
+    for key in ('runner_sha256', 'build_spec_sha256', 'compiler_sha256', 'arch', 'flags'):
         if identities['baseline'][key] != identities['candidate'][key]:
             parser.error('different build environment/protocol: ' + key)
     if identities['baseline']['runner_sha256'] != sha256(Path(__file__).with_name('npu_runner.asc')):
         parser.error('runner record differs from the current benchmark protocol')
+    if identities['baseline']['build_spec_sha256'] != sha256(Path(__file__).with_name('CMakeLists.txt')):
+        parser.error('build configuration differs from the current benchmark protocol')
     runs = args.runs.resolve()
     runs.mkdir(parents=True, exist_ok=False)
     result = dict(workflow_passed=False, suite=args.suite, seed=args.seed,

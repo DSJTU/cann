@@ -1,5 +1,6 @@
 file(SHA256 "${KERNEL}" kernel_hash)
 file(SHA256 "${RUNNER}" runner_hash)
+file(SHA256 "${BUILD_SPEC}" build_spec_hash)
 file(SHA256 "${BINARY}" binary_hash)
 file(SHA256 "${COMPILER}" compiler_hash)
 foreach(field ARCH COMPILER FLAGS)
@@ -8,4 +9,4 @@ foreach(field ARCH COMPILER FLAGS)
     string(REPLACE "\n" "\\n" ${field} "${${field}}")
 endforeach()
 file(WRITE "${BINARY}.build.json"
-    "{\n  \"kernel_sha256\": \"${kernel_hash}\",\n  \"runner_sha256\": \"${runner_hash}\",\n  \"binary_sha256\": \"${binary_hash}\",\n  \"compiler_sha256\": \"${compiler_hash}\",\n  \"arch\": \"${ARCH}\",\n  \"compiler\": \"${COMPILER}\",\n  \"flags\": \"${FLAGS}\"\n}\n")
+    "{\n  \"kernel_sha256\": \"${kernel_hash}\",\n  \"runner_sha256\": \"${runner_hash}\",\n  \"build_spec_sha256\": \"${build_spec_hash}\",\n  \"binary_sha256\": \"${binary_hash}\",\n  \"compiler_sha256\": \"${compiler_hash}\",\n  \"arch\": \"${ARCH}\",\n  \"compiler\": \"${COMPILER}\",\n  \"flags\": \"${FLAGS}\"\n}\n")

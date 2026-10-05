@@ -180,6 +180,7 @@ class ValidationTests(unittest.TestCase):
         binary.write_bytes(b'new binary')
         compiler.write_bytes(b'compiler')
         subprocess.run(['cmake', f'-DKERNEL={binary}', f'-DRUNNER={binary}', f'-DBINARY={binary}',
+                        f'-DBUILD_SPEC={binary}',
                         f'-DCOMPILER={compiler}', '-DARCH=dav-2201', '-DFLAGS=-DNAME="test"', '-P',
                         str(Path(__file__).with_name('write_build_manifest.cmake'))], check=True)
         self.assertEqual(build_identity(binary)['flags'], '-DNAME="test"')
@@ -208,6 +209,12 @@ class ValidationTests(unittest.TestCase):
         binary = build/'fixture'
         original = Path(str(binary)+'.build.json').read_bytes()
         self.assertIn('a|b"c', build_identity(binary)['flags'])
+        cmakefile = project/'CMakeLists.txt'
+        cmakefile.write_text(cmakefile.read_text() + '\n# changed build specification\n')
+        completed = subprocess.run(['cmake', '--build', str(build)], capture_output=True)
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(build_identity(binary)['build_spec_sha256'], npu_data.sha256(cmakefile))
+        original = Path(str(binary)+'.build.json').read_bytes()
         # A failed rebuild must not label the earlier binary as the new source.
         (project/'main.cpp').write_text('#error intentionally failed build\n')
         completed = subprocess.run(['cmake', '--build', str(build)], capture_output=True)
@@ -233,6 +240,7 @@ class ValidationTests(unittest.TestCase):
             binary.write_bytes(binary.name.encode())
             identity = dict(binary_sha256=npu_data.sha256(binary), kernel_sha256='a'*64,
                             runner_sha256=npu_data.sha256(Path(__file__).with_name('npu_runner.asc')),
+                            build_spec_sha256=npu_data.sha256(Path(__file__).with_name('CMakeLists.txt')),
                             compiler_sha256='b'*64, arch='dav-2201', flags='same')
             Path(str(binary)+'.build.json').write_text(json.dumps(identity))
         seen = []

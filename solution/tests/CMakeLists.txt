@@ -16,10 +16,13 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/../kernel.asc" "${CMAKE_CURRENT_SOURCE_DIR}/npu_runner.asc")
 # Written only after a successful link, and bound to the resulting binary.
 function(record_validation_build target)
+set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt" "${CMAKE_CURRENT_SOURCE_DIR}/write_build_manifest.cmake")
 add_custom_command(TARGET ${target} POST_BUILD
     COMMAND ${CMAKE_COMMAND}
         "-DKERNEL=${CMAKE_CURRENT_SOURCE_DIR}/../kernel.asc"
         "-DRUNNER=${CMAKE_CURRENT_SOURCE_DIR}/npu_runner.asc"
+        "-DBUILD_SPEC=${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
         "-DBINARY=$<TARGET_FILE:${target}>"
         "-DARCH=${NPU_ARCH}"
         "-DCOMPILER=${CMAKE_ASC_COMPILER}"
