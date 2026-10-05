@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Prepare reproducible storage values and independent FP64 NPU test goldens."""
 import argparse
+import hashlib
 import itertools
 import json
 from pathlib import Path
@@ -11,9 +12,30 @@ import sys
 sys.dont_write_bytecode = True
 
 from test_cpu import cases, extended_cases, performance_cases, cube_finish_cases, short_cube_cases, long_cube_cases, make_inputs, quantize
+from case_catalog import BENCHMARK_SUITES, benchmark_specs, coverage, input_seed, robustness_specs, validate_shape
+
+SUITES = ('baseline', 'native', 'smoke', 'correctness', 'extended', 'performance',
+          'cube-finish', 'short-cube', 'long-cube', 'launch-rule', 'precision',
+          'benchmark', 'large-short-k', 'stress', 'robustness') + BENCHMARK_SUITES
+
+
+def sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open('rb') as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def specs(suite):
+    if suite not in SUITES:
+        raise ValueError(f'unknown suite: {suite}')
+    if suite in BENCHMARK_SUITES:
+        yield from benchmark_specs(suite)
+        return
+    if suite == 'robustness':
+        yield from robustness_specs()
+        return
     if suite == 'baseline':
         shapes = ((3,1,1,32),(3,1,1,40),(3,1,1,64),(3,1,1,72),
                   (3,33,17,40),(64,3,2,32),(1,65,129,520),(1,8191,129,32))
@@ -100,15 +122,17 @@ def golden_rows(a, b):
     return result
 
 
-def generate(suite, prefix):
+def generate(suite, prefix, seed=20261002):
     prefix = Path(prefix)
     prefix.parent.mkdir(parents=True, exist_ok=True)
     definitions = list(specs(suite))
-    rng = np.random.default_rng(20261002)
     outputs, metadata = [], []
     with prefix.with_suffix('.bin').open('wb') as out:
         out.write(struct.pack('<I', len(definitions)))
         for index, (shape, dtype, ta, tb, cores, mode) in enumerate(definitions):
+            validate_shape(shape)
+            case_seed = input_seed(shape, mode, seed)
+            rng = np.random.default_rng(case_seed)
             a, b = make_inputs(shape, mode, rng)
             stored_a, a = quantize(a, dtype)
             stored_b, b = quantize(b, dtype)
@@ -119,17 +143,36 @@ def generate(suite, prefix):
             out.write(struct.pack('<9I', *shape, dtype, ta, tb, cores, index % 2))
             out.write(pa.tobytes(order='C'))
             out.write(pb.tobytes(order='C'))
-            metadata.append(dict(index=index, shape=shape, dtype=dtype, ta=ta, tb=tb, cores=cores, mode=mode))
+            metadata.append(dict(index=index, shape=shape, dtype=dtype, ta=ta, tb=tb,
+                                 cores=cores, mode=mode, input_seed=case_seed,
+                                 flops=2*shape[0]*shape[1]*shape[2]*shape[3],
+                                 input_bytes=2*shape[0]*shape[3]*(shape[1]+shape[2]),
+                                 **(coverage(shape) if suite in BENCHMARK_SUITES else dict(family='diagnostic', split=suite))))
     np.concatenate(outputs).tofile(prefix.with_suffix('.golden.bin'))
     prefix.with_suffix('.json').write_text(json.dumps(metadata, indent=2) + '\n')
+    manifest = dict(suite=suite, seed=seed, cases=len(metadata),
+                    geometries=len({tuple(s['shape']) for s in metadata}),
+                    input_sha256=sha256(prefix.with_suffix('.bin')),
+                    golden_sha256=sha256(prefix.with_suffix('.golden.bin')),
+                    metadata_sha256=sha256(prefix.with_suffix('.json')),
+                    golden_method='quantized storage -> FP64 dot/max/sum -> FP32')
+    prefix.with_suffix('.manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     print(f'Prepared {len(definitions)} {suite} cases: {prefix.with_suffix(".bin")}')
 
 
-def verify(prefix, output):
+def verify(prefix, output, quiet=False):
     prefix = Path(prefix)
     metadata = json.loads(prefix.with_suffix('.json').read_text())
     golden = np.fromfile(prefix.with_suffix('.golden.bin'), dtype=np.float32)
     actual = np.fromfile(output, dtype=np.float32)
+    if golden.size != sum(s['shape'][0] for s in metadata) or not np.all(np.isfinite(golden)):
+        raise RuntimeError('invalid or incomplete golden')
+    manifest_path = prefix.with_suffix('.manifest.json')
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text())
+        for suffix, key in (('.bin', 'input_sha256'), ('.json', 'metadata_sha256'), ('.golden.bin', 'golden_sha256')):
+            if sha256(prefix.with_suffix(suffix)) != manifest[key]:
+                raise RuntimeError(f'test data hash mismatch: {suffix}')
     if actual.shape != golden.shape:
         raise RuntimeError(f'incomplete output: {actual.size} / {golden.size} values')
     offset, failures, worst = 0, [], 0.0
@@ -142,20 +185,25 @@ def verify(prefix, output):
         worst = max(worst, float(scaled.max()))
         if not np.all(np.isfinite(x)) or not np.all(scaled <= 1):
             failures.append(dict(spec=spec, actual=x.tolist(), golden=y.tolist(), scaled=scaled.tolist()))
-    report = dict(cases=len(metadata), passed=len(metadata) - len(failures), worst_error_over_tolerance=worst, failures=failures)
+    report = dict(cases=len(metadata), passed=len(metadata) - len(failures), worst_error_over_tolerance=worst, failures=failures,
+                  input_sha256=sha256(prefix.with_suffix('.bin')), output_sha256=sha256(output),
+                  golden_sha256=sha256(prefix.with_suffix('.golden.bin')))
     Path(output).with_suffix('.report.json').write_text(json.dumps(report, indent=2) + '\n')
-    print(json.dumps(report, indent=2))
+    if not quiet:
+        print(json.dumps(report, indent=2))
     if failures:
         raise SystemExit(1)
+    return report
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', choices=('baseline', 'native', 'smoke', 'correctness', 'extended', 'performance', 'cube-finish', 'short-cube', 'long-cube', 'launch-rule', 'precision', 'benchmark', 'large-short-k', 'stress'), default='smoke')
+    parser.add_argument('--suite', choices=SUITES, default='smoke')
+    parser.add_argument('--seed', type=int, default=20261002)
     parser.add_argument('--prefix', required=True)
     parser.add_argument('--verify', help='verify device output instead of generating inputs')
     args = parser.parse_args()
     if args.verify:
         verify(args.prefix, args.verify)
     else:
-        generate(args.suite, args.prefix)
+        generate(args.suite, args.prefix, args.seed)

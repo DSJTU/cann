@@ -21,6 +21,8 @@ python3 solution/tests/test_cpu.py
 
 需要 NumPy、g++、clang++。检查两种精度、四种布局、边界、输入不变、重复性、输出保护区、ASan/UBSan 和模拟单 launch。数学模型以同步 FP64 点积检查地址及控制流，配对线程模型检查共享槽握手；不模拟 NPU 流水、硬件舍入、图捕获或性能。
 
+测试工具本身的错误证据回归：`python3 solution/tests/test_validation.py`。新增语义边界可单跑 `python3 solution/tests/test_cpu.py --suite robustness`。
+
 ## 真机检查
 
 加载 CANN 9.0 SDK 后，从仓库根运行：
@@ -33,4 +35,4 @@ python3 solution/tests/run_npu_checks.py --suites baseline --modes ordinary
 
 上述最小检查点包含四类入口、存储布局、重复调用及真实单 kernel profile。扩大边界覆盖可用 `--suites native`；固定形状图捕获可用 `--modes capture-cold`，其他调用模式按改动选择。图内 scratch 扩容不作为比赛优化目标，需单独验证。
 
-`--benchmark` runner 预热两次并测十次；赛事相关性能比较使用同设备同输入的 msprof kernel duration。生成物放 `.private/runtime/`，记录被验证源码哈希，自建计时不能代替赛事分数。
+`--benchmark` runner 预热两次并测十次；赛事相关性能比较使用同设备同输入的 msprof kernel duration。生成物放 `.private/runtime/`，记录被验证源码哈希，自建计时不能代替赛事分数。详见[性能与用例方法](tests/README.md)。

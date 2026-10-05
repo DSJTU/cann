@@ -21,6 +21,7 @@ import sys
 sys.dont_write_bytecode = True
 
 from check_host_types import main as check_host_types
+from case_catalog import robustness_specs
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -268,12 +269,25 @@ def make_inputs(shape, mode, rng):
         b.fill(0)
         b[:, 0, :] = 1
         b[:, 1, :] = np.arange(n) * 2 ** -12
+    elif mode in ('row-winners', 'batch-distinct', 'last-max'):
+        a.fill(0)
+        b.fill(0)
+        if mode == 'row-winners':
+            # sum(row maxima)=3; max(column sums)=2. Exact in both dtypes.
+            a[:, :3, :3] = np.eye(3)
+            b[:, :3, :2] = [[1, 0], [0, 1], [1, 0]]
+        else:
+            a[:, :, 0] = np.arange(1, batch + 1)[:, None]
+            b[:, 0, :] = -2
+            # Only the final valid column wins; padded lanes would win at 0
+            # if the valid tail is lost. Each batch has a distinct negative y.
+            b[:, 0, -1] = -1
     return a, b
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', choices=('all', 'correctness', 'extended', 'performance', 'cube-finish', 'short-cube', 'long-cube'), default='all')
+    parser.add_argument('--suite', choices=('all', 'correctness', 'extended', 'performance', 'cube-finish', 'short-cube', 'long-cube', 'robustness'), default='all')
     args = parser.parse_args()
     source_path = ROOT / 'kernel.asc'
     check_host_types()
@@ -300,6 +314,8 @@ def main():
             specs.extend(short_cube_cases())
         if args.suite in ('all', 'long-cube'):
             specs.extend(long_cube_cases())
+        if args.suite in ('all', 'robustness'):
+            specs.extend(robustness_specs())
         payload = bytearray(struct.pack('<I', len(specs)))
         expected = []
         rng = np.random.default_rng(20261002)
