@@ -1,9 +1,7 @@
-// Synchronous mathematical model for layout and bounds checks.
+// Synchronous SDK Cube model for layout and bounds checks.
 // FP64 dot products do not model Cube precision, pipelines or graph lifetime.
 #pragma once
-#include <atomic>
 #include <cstdlib>
-#define __kfc_workspace__
 using aclError = int;
 constexpr aclError ACL_SUCCESS = 0;
 constexpr int ACL_MEM_MALLOC_HUGE_FIRST = 0;
@@ -14,31 +12,20 @@ inline aclError aclrtMalloc(void** ptr, size_t size, int) {
 inline aclError aclrtFree(void* ptr) { std::free(ptr); return ACL_SUCCESS; }
 inline aclError aclrtGetCurrentContext(aclrtContext* c) { *c = reinterpret_cast<void*>(1); return ACL_SUCCESS; }
 inline aclError aclrtSynchronizeStream(aclrtStream) { return ACL_SUCCESS; }
-namespace bmmms_sim {
-inline std::atomic<uint64_t> &MatmulRequests() { static std::atomic<uint64_t> value{0}; return value; }
-inline std::atomic<uint64_t> &MatmulTiles() { static std::atomic<uint64_t> value{0}; return value; }
-}
 enum class CubeFormat { ND };
 namespace AscendC { namespace tiling {
 struct TCubeTiling {
     uint32_t baseM = 32, baseN = 64, orgM = 0, orgN = 0, orgK = 0;
 };
 }}
-namespace AscendC {
-inline void Max(LocalTensor<float> dst, LocalTensor<float> a, LocalTensor<float> b, uint32_t count) {
-    dst.Aligned(); a.Aligned(); b.Aligned();
-    for (uint32_t i=0;i<count;++i) dst.SetValue(i,std::max(a.GetValue(i),b.GetValue(i)));
-}
-}
-inline void* GetSysWorkSpacePtr() { return nullptr; }
 namespace platform_ascendc {
 struct PlatformAscendC { size_t GetLibApiWorkSpaceSize() const { return 64; } uint32_t GetCoreNumAic() const { return 20; } };
 struct PlatformAscendCManager {
-    static PlatformAscendC* GetInstance(const char*) { static PlatformAscendC platform; return &platform; }
+    static PlatformAscendC* GetInstance(const char* = nullptr) { static PlatformAscendC platform; return &platform; }
 };
 }
 namespace matmul_tiling {
-enum class TPosition { GM, LCM };
+enum class TPosition { GM, LCM, VECIN };
 using CubeFormat = ::CubeFormat;
 enum class DataType { DT_FLOAT16, DT_BF16, DT_BFLOAT16 = DT_BF16, DT_FLOAT };
 class MatmulApiTiling {
@@ -67,7 +54,8 @@ class Matmul {
     uint32_t orgM=0, orgN=0, orgK=0, m=0, n=0, k=0, baseM=0, baseN=0, tile=0;
     bool ta=false, tb=false, done=true, pending=false;
 public:
-    void Init(const AscendC::tiling::TCubeTiling* t) {
+    void SetSubBlockIdx(uint32_t sub) { if(sub) throw std::runtime_error("SDK Cube subblock must be zero"); }
+    void Init(const AscendC::tiling::TCubeTiling* t, AscendC::TPipe*) {
         orgM=t->orgM; orgN=t->orgN; orgK=t->orgK; baseM=t->baseM; baseN=t->baseN;
     }
     void SetOrgShape(uint32_t om, uint32_t on, uint32_t ok) { orgM=om; orgN=on; orgK=ok; }
@@ -78,7 +66,6 @@ public:
         if (!sm || !sn || !sk || !baseM || !baseN || sm>baseM || sk>orgK)
             throw std::runtime_error("CPU Matmul single shape exceeds one M tile or full K");
         m=sm; n=sn; k=sk; tile=0; pending=false; done=false;
-        bmmms_sim::MatmulRequests().fetch_add(1, std::memory_order_relaxed);
     }
     void SetTensorA(AscendC::GlobalTensor<typename A::T> input, bool trans) {
         if (trans && !A::isTrans) throw std::runtime_error("MatmulType must enable A transpose");
@@ -88,13 +75,13 @@ public:
         if (trans && !B::isTrans) throw std::runtime_error("MatmulType must enable B transpose");
         b=input; tb=trans;
     }
-    template <bool sync=true> bool Iterate() {
+    bool Iterate() {
         if (pending) throw std::runtime_error("Iterate before consuming the current tile");
         if (tile * baseN >= n) { done=true; return false; }
         pending=true;
         return true;
     }
-    template <bool sync=true, typename Destination> void GetTensorC(Destination output, int atomic, bool sequential) {
+    template <typename Destination> void GetTensorC(Destination output, int atomic, bool sequential) {
         if (!pending || atomic || !sequential) throw std::runtime_error("unexpected CPU Matmul output mode");
         const uint32_t col0 = tile * baseN;
         const uint32_t tileCols = n - col0 < baseN ? n - col0 : baseN;
@@ -108,7 +95,6 @@ public:
             }
             output.SetValue(row*tileCols+col,typename C::T(value));
         }
-        bmmms_sim::MatmulTiles().fetch_add(1, std::memory_order_relaxed);
         ++tile;
         pending=false;
         if (tile * baseN >= n) done=true;
@@ -116,4 +102,3 @@ public:
     void End() const { if (pending || !done) throw std::runtime_error("Matmul result was not consumed"); }
 };
 }
-#define REGIST_MATMUL_OBJ(pipe, workspace, object, tiling) object.Init(tiling)

@@ -17,6 +17,9 @@ import subprocess
 import tempfile
 
 import numpy as np
+import sys
+sys.dont_write_bytecode = True
+
 from check_host_types import main as check_host_types
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,13 +31,16 @@ def cpu_source(source_path):
     assert '#include <cstdio>' not in source and '#include <stdio.h>' not in source
     source = re.sub(r'^#include "[^"]+"\n', '', source, flags=re.MULTILINE)
     for name, expected, launcher in (
-            ('fused_kernel', 1, 'LaunchMixed'), ('bmmms_small_kernel', 1, 'Launch'), ('bmmms_dot_kernel', 2, 'Launch')):
+            ('fused_kernel', 1, 'LaunchMixed'),
+            ('bmmms_small_kernel', 4, 'Launch'),
+            ('bmmms_static_dot_kernel', 3, 'Launch'),
+            ('bmmms_dot_kernel', 1, 'Launch')):
         source, count = re.subn(
-            rf'({name}<[^>]+>)<<<([^,]+), nullptr, stream>>>\(([^;]+)\);',
+            rf'({name}<[^>]+>)<<<([^,]+),\s*nullptr,\s*stream>>>\(([^;]+)\);',
             rf'sim::{launcher}(\2, [&] {{ \1(\3); }});', source)
         assert count == expected, (name, count)
     assert '<<<' not in source
-    return '#include "sim_matmul.h"\n' + source
+    return '#include "sim_matmul.h"\n#include "sim_mixed.h"\n' + source
 
 
 def quantize(values, dtype):
@@ -51,12 +57,15 @@ def quantize(values, dtype):
 
 def cases():
     shapes = [
-        (1, 1, 1, 32), (3, 1, 1, 40), (2, 1, 1, 8192),
+        (1, 1, 1, 32), (3, 1, 1, 40), (3, 1, 1, 64),
+        (3, 1, 1, 72), (2, 1, 1, 8192), (3, 64, 2, 32),
         (1, 2, 3, 32), (2, 15, 17, 40), (3, 17, 15, 72),
         (1, 33, 129, 64), (1, 65, 257, 40), (2, 127, 63, 32),
         (3, 31, 17, 256), (1, 1, 513, 40), (1, 2, 129, 32),
         (1, 129, 1, 40), (64, 1, 2, 32), (1, 1, 17, 8192),
         (2, 17, 33, 136), (1, 3, 19, 248), (1, 2, 17, 264),
+        (1, 7, 31, 4104), (2, 49, 193, 4096),
+        (1, 9, 17, 520), (8, 33, 65, 1032),
         (1, 7, 15, 56), (1, 9, 16, 96), (1, 5, 17, 112), (1, 3, 33, 120),
         (1, 8192, 1, 32), (1, 65, 1, 40), (64, 3, 2, 32),
     ]
@@ -128,7 +137,7 @@ def performance_cases():
 
 
 def cube_finish_cases():
-    """Exercise the actual Cube dispatch and large-M compensated reduction."""
+    """Exercise large-M multi-chunk reduction boundaries."""
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (1, 1649, 257, 40), dtype, ta, tb, 20, 'm-cancellation'
         yield (1, 8191, 257, 40), dtype, ta, tb, 20, 'm-magnitude'
@@ -169,14 +178,14 @@ def long_cube_cases():
     for i, ((shape, mode), dtype, ta, tb) in enumerate(itertools.product(
             definitions, (1, 2), (False, True), (False, True))):
         yield shape, dtype, ta, tb, (1, 20)[i % 2], mode
-    windows = [((1, 64, 129, 512), 'random'),
+    tiles = [((1, 64, 129, 512), 'random'),
                ((1, 64, 257, 256), 'close-max'),
                ((1, 64, 385, 256), 'negative'),
                ((1, 65, 513, 136), 'random'),
                ((3, 65, 513, 136), 'partition'),
                ((1, 65, 1025, 136), 'm-cancellation')]
     for (shape, mode), dtype, ta, tb, cores in itertools.product(
-            windows, (1, 2), (False, True), (False, True), (1, 20)):
+            tiles, (1, 2), (False, True), (False, True), (1, 20)):
         yield shape, dtype, ta, tb, cores, mode
     for dtype, ta, tb in itertools.product((1, 2), (False, True), (False, True)):
         yield (1, 65, 257, 8192), dtype, ta, tb, 1, 'block-cancellation'
@@ -310,8 +319,6 @@ def main():
         result = subprocess.run([str(executable)], input=payload, capture_output=True, env=env)
         if result.returncode:
             raise RuntimeError(result.stderr.decode(errors='replace'))
-        if os.environ.get('BMMMS_REQUEST_LOG'):
-            print(result.stderr.decode(errors='replace'), end='')
         values = np.frombuffer(result.stdout, dtype=np.float32)
         assert len(values) == sum(s[0][0] for s in specs)
         offset = 0

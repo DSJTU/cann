@@ -10,6 +10,9 @@ import math
 from pathlib import Path
 import re
 import statistics
+import sys
+
+sys.dont_write_bytecode = True
 
 from check_launch_profile import records
 
@@ -42,7 +45,10 @@ def profile_timings(directory, count):
     # must execute one consistent kernel for its two warmups and ten samples.
     for i in range(count):
         names = {row['Op Name'] for row in rows[i * 12:(i + 1) * 12]}
-        if len(names) != 1 or not any(kind in next(iter(names)) for kind in ('fused_kernel', 'bmmms_small_kernel', 'bmmms_dot_kernel')):
+        if len(names) != 1 or not any(kind in next(iter(names)) for kind in (
+            'fused_kernel', 'bmmms_small_kernel', 'bmmms_dot_kernel',
+            'bmmms_static_dot_kernel',
+        )):
             raise ValueError(f'unexpected kernel dispatch for case {i} in {directory}')
     values = [float(r['Task Duration(us)']) for r in rows]
     if any(not math.isfinite(v) or v <= 0 for v in values):

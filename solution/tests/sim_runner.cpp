@@ -10,12 +10,15 @@ static bool Read(void* p, size_t n) {
 }
 
 int main() {
+    uint32_t caseIndex = 0;
+    std::array<uint32_t, 9> caseHeader{};
     try {
         uint32_t count = 0;
         if (!Read(&count, 4)) return 1;
         for (uint32_t ci = 0; ci < count; ++ci) {
             std::array<uint32_t, 9> h;
             if (!Read(h.data(), h.size() * 4)) return 2;
+            caseIndex = ci; caseHeader = h;
             const auto batch = h[0], m = h[1], n = h[2], k = h[3], dtype = h[4];
             const bool ta = h[5], tb = h[6];
             const auto cores = h[7];
@@ -36,14 +39,7 @@ int main() {
                 if (sim::launchCount() - launches != 1)
                     throw std::runtime_error("each invocation must launch exactly one kernel");
             };
-            const auto requestsBefore = bmmms_sim::MatmulRequests().load();
-            const auto tilesBefore = bmmms_sim::MatmulTiles().load();
             invoke();
-            if (std::getenv("BMMMS_REQUEST_LOG")) {
-                std::cerr << "REQ " << batch << ' ' << m << ' ' << n << ' ' << k << ' ' << cores << ' '
-                          << (bmmms_sim::MatmulRequests().load() - requestsBefore) << ' '
-                          << (bmmms_sim::MatmulTiles().load() - tilesBefore) << '\n';
-            }
             const auto first = y;
             invoke();
             if (std::memcmp(first.data(), y.data(), y.size() * sizeof(float)))
@@ -57,7 +53,9 @@ int main() {
         }
         return 0;
     } catch (const std::exception& e) {
-        std::cerr << "CPU model failure: " << e.what() << '\n';
+        std::cerr << "CPU model failure at case " << caseIndex << " ("
+                  << caseHeader[0] << "," << caseHeader[1] << "," << caseHeader[2] << "," << caseHeader[3]
+                  << ",dtype=" << caseHeader[4] << ",ta=" << caseHeader[5] << ",tb=" << caseHeader[6] << "): " << e.what() << '\n';
         return 4;
     }
 }
